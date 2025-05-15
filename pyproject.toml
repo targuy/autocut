@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "AutoCutVideo"
+version = "0.1.0"
+description = "projet de découpe automatique des scenes avec personnes"
+authors = ["Benoit Guitard <benoit@familleguitard.fr>"]
+readme = "README.md"
+
+# Package configuration: include your code directories as packages
+packages = [
+  { include = "cli" },
+  { include = "pipeline" },
+  { include = "segmenters" },
+  { include = "detectors" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+opencv-python = "^4.11.0.86"
+ultralytics = "^8.3.131"
+numpy = "^1.26"
+pyyaml = "^6.0.2"
+transformers = "^4.51.3"
+huggingface-hub = "^0.31.1"
+nsfw-image-detector = "^0.1.2"
+mediapipe = "^0.10.0"
+torch = "*"
+torchvision = "*"
+tqdm = "^4.66.4"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+flake8 = "^7.2.0"
+black = "^25.1.0"
+
+[tool.poetry.scripts]
+autocut = "cli.process_video:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
