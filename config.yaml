@@ -53,3 +53,10 @@ skin_segm_weights:          "E:/DocumentsBenoit/Stable Diffusion/models/ultralyt
 # ID Hugging Face pour classification de genre
 gender_model_id: "rizvandwiki/gender-classification-2"
 
+title_generation:
+  enabled: true
+  prompt: "describe in one line ..."
+  model: "mistral-community_pixtral-12b"
+  endpoint: "http://localhost:1234/v1/chat/completions"
+
+
