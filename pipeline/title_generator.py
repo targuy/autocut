@@ -7,23 +7,24 @@ import requests
 import subprocess
 import time
 from requests.exceptions import RequestException
+import cv2
+from pathlib import Path
 
 def ensure_server_running(model: str, endpoint: str) -> bool:
     """
     Vérifie que le serveur LMStudio est en cours d'exécution et que le modèle est chargé.
-    Tente de lancer le serveur et de charger le modèle via le CLI `lms` si nécessaire.
+    Tente de lancer le serveur et de charger le modèle via la CLI `lms` si nécessaire.
     Retourne True si le modèle est prêt à l'inférence, False sinon.
     """
     # Extraire l'URL de base (jusqu'à /v1) à partir de l'endpoint fourni
     base_url = endpoint
     if "/chat/completions" in base_url:
         base_url = base_url.split("/chat/completions")[0]
-    # Assurer que base_url se termine par /v1
+    # S'assurer que base_url se termine par /v1
     if not base_url.endswith("/v1"):
         if "/v1" in base_url:
             base_url = base_url[:base_url.index("/v1")+3]
         else:
-            # Si l'endpoint ne contient pas /v1, on l'ajoute
             base_url = base_url.rstrip("/") + "/v1"
     # Vérifier si le serveur est joignable
     try:
@@ -34,7 +35,7 @@ def ensure_server_running(model: str, endpoint: str) -> bool:
     if not server_up:
         # Tenter de démarrer le serveur LMStudio via `lms server start`
         try:
-            proc = subprocess.Popen(
+            subprocess.Popen(
                 ["lms", "server", "start"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
@@ -58,7 +59,7 @@ def ensure_server_running(model: str, endpoint: str) -> bool:
         if not server_up:
             print("[TitleGeneration] ERREUR : impossible de démarrer le serveur LMStudio.")
             return False
-    # À ce stade, le serveur est up. Vérifier si le modèle est chargé.
+    # À ce stade, le serveur est démarré. Vérifier si le modèle est chargé.
     try:
         resp = requests.get(f"{base_url}/models", timeout=5)
         resp.raise_for_status()
@@ -74,7 +75,6 @@ def ensure_server_running(model: str, endpoint: str) -> bool:
         loaded_models = [m.get("id") for m in data if isinstance(m, dict) and m.get("id")]
     # Vérifier si le modèle est déjà dans la liste des modèles chargés
     model_identifier = model
-    # Si le nom contient un underscore ou un slash, comparer aussi avec l'identifiant potentiel
     alt_identifier = None
     if "/" in model_identifier:
         alt_identifier = model_identifier.split("/")[-1]
@@ -87,7 +87,6 @@ def ensure_server_running(model: str, endpoint: str) -> bool:
             break
     if not model_loaded:
         # Tenter de charger le modèle via `lms load`
-        # Si le modèle est un identifiant HF avec underscore, convertir en "org/model"
         model_to_load = model_identifier
         if "_" in model_identifier and "/" not in model_identifier:
             parts = model_identifier.split("_", 1)
@@ -113,7 +112,6 @@ def generate_titles(image_paths, prompt: str, model: str, endpoint: str):
         except Exception as e:
             print(f"[TitleGeneration] Impossible de lire l'image {img_path} : {e}")
             return None
-        # Construire le message multimodal pour l'API OpenAI-like
         payload = {
             "model": model,
             "messages": [
@@ -141,31 +139,31 @@ def generate_titles(image_paths, prompt: str, model: str, endpoint: str):
         content = data["choices"][0]["message"]["content"]
         # S'assurer d'obtenir une chaîne de caractères
         if isinstance(content, list):
-            # Si le contenu est une liste (peu probable), concaténer les sous-éléments textuels
-            content_str = " ".join(item.get("text", "") if isinstance(item, dict) else str(item) for item in content)
+            content_str = " ".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in content
+            )
         else:
             content_str = str(content)
         return content_str
 
-    # Envoyer les images en parallèle (pool de threads)
     titles = []
     if image_paths:
         from concurrent.futures import ThreadPoolExecutor
         max_workers = min(4, len(image_paths))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(process_image, img) for img in image_paths]
-            results = [f.result() for f in futures]  # préserver l'ordre des images
+            results = [f.result() for f in futures]  # préserver l'ordre
     else:
         results = []
 
     # Nettoyer les titres bruts et gérer les échecs
     for i, res in enumerate(results, start=1):
         if res is None or not res.strip():
-            # Utiliser le nom par défaut si échec
             titles.append(f"clip_{i:03d}")
             continue
         title = res.strip()
-        # Retirer les guillemets englobants éventuels
+        # Retirer d'éventuels guillemets englobants
         if (title.startswith('"') and title.endswith('"')) or (title.startswith("'") and title.endswith("'")):
             title = title[1:-1].strip()
         # Retirer un préfixe du style "Title: " ou "Titre : "
@@ -185,7 +183,6 @@ def generate_titles(image_paths, prompt: str, model: str, endpoint: str):
             titles.append(f"clip_{i:03d}")
         else:
             titles.append(title)
-
     # Déduplication des titres (ajout d'un suffixe si nécessaire)
     seen = {}
     for idx, name in enumerate(titles):
@@ -201,5 +198,50 @@ def generate_titles(image_paths, prompt: str, model: str, endpoint: str):
             seen[new_name] = 1
         else:
             seen[name] = 1
-
     return titles
+
+class TitleGenerator:
+    """Générateur de titres basé sur un modèle multimodal via LMStudio."""
+    def __init__(self, endpoint: str, model: str, prompt_template: str):
+        self.endpoint = endpoint
+        self.model = model
+        self.prompt_template = prompt_template
+
+    def generate_title(self, image_path: str) -> str:
+        """Génère un titre unique à partir d'une image donnée."""
+        titles = generate_titles([image_path], self.prompt_template, self.model, self.endpoint)
+        # Retourner le premier titre généré (une seule image en entrée)
+        return titles[0] if titles else ""
+
+    def generate_title_from_video(self, video_path: str) -> str:
+        """Extrait une image médiane de la vidéo et génère un titre."""
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise RuntimeError(f"Impossible d'ouvrir la vidéo {video_path}")
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count > 0:
+            mid_frame_idx = frame_count // 2
+            cap.set(cv2.CAP_PROP_POS_FRAMES, mid_frame_idx)
+        else:
+            # Si le nombre de frames est indisponible, utiliser la position relative
+            cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 0.5)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            raise RuntimeError(f"Impossible d'extraire une image de {video_path}")
+        # Sauvegarder la frame dans un fichier temporaire
+        video_path_obj = Path(video_path)
+        img_path = video_path_obj.with_suffix(".jpg")
+        success = cv2.imwrite(str(img_path), frame)
+        if not success:
+            raise RuntimeError(f"Impossible de sauvegarder l'image {img_path}")
+        try:
+            # Générer le titre à partir de l'image
+            title = self.generate_title(str(img_path))
+        finally:
+            # Nettoyer le fichier image temporaire
+            try:
+                img_path.unlink()
+            except OSError:
+                pass
+        return title

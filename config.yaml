@@ -2,45 +2,36 @@
 # Configuration AutoCutVideo
 
 # Vidéo
-input_video: 'T:/Temp/Asian_nude_black_hair_mid_30s_slim_medium_round_cowgirl.mp4'
+input_video: 'T:\VideostoFilter\NEW NetVideoGirls Cass Gorgeous with a Perfect Body and Great At.mp4'
 output_dir:  'E:/DocumentsBenoit/Doc DaVinci/timelines/outTest2'
 
-# Matériel
+# Matériel & workers
 device:                     "cuda:0"
-num_workers:                16
+num_workers:                8
 
-# Fréquences
-sample_rate:                2.0   # fps pour échantillonnage rapide
-refine_rate:                12.0   # fps pour affinage des bords
+# Fréquences & découpe
+sample_rate:                0.5     # fps pour échantillonnage rapide
+refine_rate:                5.0    # fps pour affinage des bords
+min_clip_duration:          8.0    # durée min clip (secondes)
+max_gap:                    3.0     # tolérance gap en secondes
 
-# Critères de découpe
-min_clip_duration:          10.0    # durée min clip (secondes)
-max_gap:                    2  # tolérance gap en secondes
-
-# Seuils
-max_face_mask_percentage:  20.0   # % max visage masqué
+# Seuils & filtres
+max_face_mask_percentage:   30.0    # % max visage masqué
 min_face_confidence:        0.6
-min_skin_percentage:        50.0   # % min peau visible sur le corps
-
-# Seuils de rotation de la tête
-max_head_pitch:  35.0   # haut / bas
-max_head_yaw:    90.0   # gauche / droite
-max_head_roll:   30.0   # inclinaison latérale
-
-
-# Filtre de genre
-gender_filter:              "female" # "male"/"female"/"all"
+min_skin_percentage:        50.0    # % min peau visible sur le corps
+gender_filter:              "female" # "homme"/"femme"/"tous"
 min_gender_confidence:      0.80
-
-
-enable_nsfw: true
-nsfw_mode: "high"
+max_head_pitch:             35.0    # deg
+max_head_yaw:               80.0    # deg
+max_head_roll:              35.0    # deg
 
 # Activation modules
 enable_body_detection:      false
 enable_skin_detection:      false
 enable_face_detection:      true
 enable_gender_detection:    true
+enable_nsfw:                true
+nsfw_mode:                  "high"
 
 # Debug
 debug:                      true
@@ -51,12 +42,17 @@ face_bbox_weights:          "E:/DocumentsBenoit/Stable Diffusion/models/ultralyt
 skin_segm_weights:          "E:/DocumentsBenoit/Stable Diffusion/models/ultralytics/segm/skin_yolov8n-seg_400.pt"
 
 # ID Hugging Face pour classification de genre
-gender_model_id: "rizvandwiki/gender-classification-2"
+gender_model_id:            "rizvandwiki/gender-classification-2"
 
+# --------------------------------------------------------------------------- #
+# Génération automatique des titres (via LMStudio / modèle multimodal)
+# --------------------------------------------------------------------------- #
 title_generation:
   enabled: true
-  prompt: "describe in one line ..."
   model: "mistral-community_pixtral-12b"
+  prompt: >-
+    describe the picture of a woman giving that criterias only: ethnicity,
+    is she nude or wearing lingerie, hair color, age, body shape, breasts size,
+    breasts shape, sexual activity type, sex pose name. concatenate answers
+    without the criteria name using _ as a separator answers to make a video file title
   endpoint: "http://localhost:1234/v1/chat/completions"
-
-
