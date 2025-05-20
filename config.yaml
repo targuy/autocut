@@ -12,13 +12,16 @@ num_workers:                8
 # Fréquences & découpe
 sample_rate:                0.5     # fps pour échantillonnage rapide
 refine_rate:                5.0    # fps pour affinage des bords
-min_clip_duration:          5.0    # durée min clip (secondes)
+min_clip_duration:          10.0    # durée min clip (secondes)
 max_gap:                    3.0     # tolérance gap en secondes
 
 # Seuils & filtres
 max_face_mask_percentage:   60.0    # % max visage masqué
 min_face_confidence:        0.6
-min_skin_percentage:        50.0    # % min peau visible sur le corps
+
+min_person_skin_percentage: 10.0    # % min peau visible sur le corps
+min_frame_person_coverage:  10.0
+
 gender_filter:              "female" # "homme"/"femme"/"tous"
 min_gender_confidence:      0.80
 max_head_pitch:             30.0    # deg

@@ -39,7 +39,9 @@ class Config:
 
     gender_filter: Literal["homme", "femme", "tous", "male", "female", "all"]
     max_face_mask_percentage: float
-    min_skin_percentage: float
+    min_person_skin_percentage: float
+    min_frame_person_coverage: float
+
     min_gender_confidence: float
     min_face_confidence: float
     max_head_pitch: float
@@ -238,7 +240,8 @@ def load_config(path: str) -> Config:
 
         gender_filter             = raw.get("gender_filter", "tous"),
         max_face_mask_percentage  = raw.get("max_face_mask_percentage", 25.0),
-        min_skin_percentage       = raw.get("min_skin_percentage", 50.0),
+        min_frame_person_coverage = raw.get("min_frame_person_coverage", 50.0),
+        min_person_skin_percentage= raw.get("min_person_skin_percentage", 50.0),
         min_gender_confidence     = raw.get("min_gender_confidence", 0.8),
         min_face_confidence       = raw.get("min_face_confidence", 0.25),
         max_head_pitch            = raw.get("max_head_pitch", 20.0),
