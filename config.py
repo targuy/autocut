@@ -1,8 +1,11 @@
-# config.py
 import sys
 import os
 from pathlib import Path
-import yaml
+try:
+    import yaml
+except ImportError:
+    print("[ERROR] Module 'yaml' non trouvé. Veuillez installer PyYAML.")
+    sys.exit(1)
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -112,9 +115,16 @@ def load_config(path: str) -> Config:
         print(f"[ERREUR] Problème avec les chemins fournis : {e}")
         sys.exit(1)
 
-    # Vidéo d'entrée : doit exister et être un fichier lisible
-    if not os.path.isfile(input_path):
-        print(f"[ERROR] Vidéo d'entrée introuvable ou illisible : {raw['input_video']}")
+    # Chemin d'entrée : doit pointer vers un fichier vidéo existant ou un dossier existant
+    if not os.path.exists(input_path):
+        print(f"[ERROR] Chemin d'entrée introuvable : {raw['input_video']}")
+        sys.exit(1)
+    if os.path.isdir(input_path):
+        pass  # Mode batch (dossier)
+    elif os.path.isfile(input_path):
+        pass  # Mode fichier unique
+    else:
+        print(f"[ERROR] Le chemin d'entrée n'est ni un fichier vidéo ni un dossier : {raw['input_video']}")
         sys.exit(1)
     # Dossier de sortie : ne doit pas pointer vers un fichier
     if os.path.isfile(output_path):

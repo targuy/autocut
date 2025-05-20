@@ -26,3 +26,4 @@ class NSFWWrapper:
         is_nsfw = self.detector.is_nsfw(img, mode)
         probas = self.detector.predict_proba(img)
         return is_nsfw, probas
+

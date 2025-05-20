@@ -12,10 +12,22 @@ import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Callable
 
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    print("[ERROR] Module 'tqdm' non trouvé. Veuillez installer tqdm.")
+    sys.exit(1)
 
-from config import load_config
-from pipeline.analyzer import FrameAnalyzer, VideoAnalyzer
+try:
+    from config import load_config
+except ImportError as e:
+    print(f"[ERROR] Importation de config impossible : {e}")
+    sys.exit(1)
+try:
+    from pipeline.analyzer import FrameAnalyzer, VideoAnalyzer
+except ImportError as e:
+    print(f"[ERROR] Impossible d'importer 'pipeline.analyzer' : {e}")
+    sys.exit(1)
 
 # --- ajout : générateur de titres multimodal ------------------------------ #
 try:
@@ -34,7 +46,8 @@ def _build_title_generator(cfg) -> Optional[Callable]:
     if not cfg.title_generation.enabled:
         return None
     if _TG is None:
-        print("[WARN] title_generation activé mais le module title_generator.py est introuvable.")
+        if cfg.debug:
+            print("[WARN] title_generation activé mais le module title_generator.py est introuvable.")
         return None
     # Vérifier que le serveur LMStudio est lancé et le modèle chargé
     from title_generator import ensure_server_running
@@ -50,15 +63,16 @@ def _build_title_generator(cfg) -> Optional[Callable]:
 
 def _print_header(cfg):
     print("=== AutoCutVideo Début ===")
-    print(f"Vidéo            : {cfg.input_video}")
+    if Path(cfg.input_video).is_dir():
+        print(f"Répertoire source: {cfg.input_video}")
+    else:
+        print(f"Vidéo            : {cfg.input_video}")
     print(f"Sortie clips     : {cfg.output_dir}")
     print(f"Device           : {cfg.device}")
     print(f"Workers          : {cfg.num_workers}")
     print(f"Filtre genre     : {cfg.gender_filter}")
     print(f"Debug            : {cfg.debug}")
-    print(f"Modules actifs   : body={cfg.enable_body_detection} "
-          f"skin={cfg.enable_skin_detection} face={cfg.enable_face_detection} "
-          f"gender={cfg.enable_gender_detection} nsfw={cfg.enable_nsfw}")
+    print(f"Modules actifs   : body={cfg.enable_body_detection} skin={cfg.enable_skin_detection} face={cfg.enable_face_detection} gender={cfg.enable_gender_detection} nsfw={cfg.enable_nsfw}")
     print(f"NSFW mode        : {cfg.nsfw_mode}")
     print(f"Pose seuils      : pitch={cfg.max_head_pitch}  yaw={cfg.max_head_yaw}  roll={cfg.max_head_roll}")
     if cfg.title_generation.enabled:
@@ -97,13 +111,22 @@ def main():
     if args.debug:
         cfg.debug = True
 
-    _print_header(cfg)
+    if cfg.debug:
+        _print_header(cfg)
 
-    # Préparer le préfixe pour les noms de fichiers de sortie
-    prefix_base = Path(cfg.input_video).stem
-    prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
-    if prefix == "":
-        prefix = "video"
+    input_path = Path(cfg.input_video)
+    videos_to_process: List[Path] = []
+    if input_path.is_dir():
+        video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".mpg", ".mpeg", ".m2ts"}
+        videos_to_process = [p for p in input_path.rglob("*") if p.is_file() and p.suffix.lower() in video_extensions]
+        videos_to_process.sort()
+        if not videos_to_process:
+            print(f"[ERROR] Aucune vidéo trouvée dans le dossier d'entrée : {cfg.input_video}")
+            sys.exit(1)
+        if cfg.debug:
+            print(f"Vidéos détectées : {len(videos_to_process)}")
+    else:
+        videos_to_process = [input_path]
 
     # ---------------- Analyseur de frames ---------------- #
     fa = FrameAnalyzer(
@@ -139,56 +162,70 @@ def main():
         num_workers=cfg.num_workers,
     )
 
-    t0 = time.time()
-    try:
-        clips = va.process(cfg.input_video, out_dir=cfg.output_dir)
-    except Exception as e:
-        print(f"[ERROR] Erreur durant le traitement vidéo : {e}")
-        sys.exit(1)
-    elapsed = time.time() - t0
-
-    # ---------------- Titres automatiques ---------------- #
     title_gen = _build_title_generator(cfg)
 
-    print("-" * 31)
-    print(f"Analyse terminée : {elapsed:.2f}s")
-    print(f"Clips créés      : {len(clips)}")
-    if cfg.debug and clips:
-        for i, (s, e) in enumerate(clips, 1):
-            print(f"[DEBUG] Segment {i} : {s:.2f}s -> {e:.2f}s (durée {(e - s):.2f}s)")
-    if not clips:
-        print("Aucun segment valide.")
-        print("=== Fin ===")
-        return
+    for video in videos_to_process:
+        rel_label = video.relative_to(input_path) if input_path.is_dir() else video.name
+        if cfg.debug:
+            print(f"\n--- Traitement de la vidéo : {rel_label} ---")
+        if input_path.is_dir():
+            out_subdir = Path(cfg.output_dir) / video.relative_to(input_path).parent / video.stem
+        else:
+            out_subdir = Path(cfg.output_dir) / video.stem
 
-    # Préparer la liste des chemins des clips générés
-    clip_paths: List[Path] = []
-    for i, (s, e) in enumerate(clips, 1):
-        path = Path(cfg.output_dir) / f"{prefix}_edited_{i:03d}.mp4"
-        clip_paths.append(path)
+        t0 = time.time()
+        try:
+            clips = va.process(str(video), out_dir=str(out_subdir))
+        except Exception as e:
+            print(f"[ERROR] Erreur durant le traitement de la vidéo {video}: {e}")
+            if cfg.debug:
+                print(f"--- Fin traitement vidéo : {rel_label} ---\n")
+            continue
+        elapsed = time.time() - t0
 
-    # Génération des titres pour chaque clip (si demandé)
-    if title_gen:
-        print("Génération des titres…")
-        for p in tqdm(clip_paths, desc="Titres"):
-            try:
-                # Générer un titre à partir d'une frame médiane du clip
-                title = title_gen.generate_title_from_video(str(p))
-                if not title or title.strip() == "" or title.lower().startswith("clip_"):
-                    print(f"[TitleGen] Aucun titre généré pour {p.name}, nom conservé.")
-                    continue
-                new_path = _rename_clip(p, title)
-                if cfg.debug:
-                    print(f"[DEBUG] {p.name} -> {new_path.name}")
-            except Exception as exc:
-                print(f"[TitleGen] Erreur sur {p.name}: {exc}")
+        if cfg.debug:
+            print(f"Analyse terminée : {elapsed:.2f}s")
+            print(f"Clips créés      : {len(clips)}")
+            if clips:
+                for i, (s, e) in enumerate(clips, 1):
+                    print(f"[DEBUG] Segment {i} : {s:.2f}s -> {e:.2f}s (durée {(e - s):.2f}s)")
+            else:
+                print("Aucun segment valide.")
+        if not clips:
+            if cfg.debug:
+                print(f"--- Fin traitement vidéo : {rel_label} ---\n")
+            continue
 
-    # Résumé final
-    print("Clips finaux :")
-    for p in Path(cfg.output_dir).iterdir():
-        if p.suffix.lower() == ".mp4":
-            print(f"  • {p.name}")
-    print("=== AutoCutVideo Fin ===")
+        prefix_base = video.stem
+        prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
+        if prefix == "":
+            prefix = "video"
+        clip_paths = sorted(Path(out_subdir).glob(f"{prefix}_edited_*.mp4"))
+
+        if title_gen:
+            if cfg.debug:
+                print("Génération des titres…")
+            for p in (tqdm(clip_paths, desc="Titres", leave=False) if cfg.debug else clip_paths):
+                try:
+                    title = title_gen.generate_title_from_video(str(p))
+                    if not title or title.strip() == "" or title.lower().startswith("clip_"):
+                        if cfg.debug:
+                            print(f"[TitleGen] Aucun titre généré pour {p.name}, nom conservé.")
+                        continue
+                    new_path = _rename_clip(p, title)
+                    if cfg.debug:
+                        print(f"[DEBUG] {p.name} -> {new_path.name}")
+                except Exception as exc:
+                    print(f"[TitleGen] Erreur sur {p.name}: {exc}")
+        if cfg.debug:
+            print("Clips finaux :")
+            for p in Path(out_subdir).iterdir():
+                if p.suffix.lower() == ".mp4":
+                    print(f"  • {p.name}")
+            print(f"--- Fin traitement vidéo : {rel_label} ---\n")
+
+    if cfg.debug:
+        print("=== AutoCutVideo Fin ===")
 
 if __name__ == "__main__":
     main()

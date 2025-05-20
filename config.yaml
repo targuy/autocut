@@ -2,8 +2,8 @@
 # Configuration AutoCutVideo
 
 # Vidéo
-input_video: 'T:\VideostoFilter\NEW NetVideoGirls Cass Gorgeous with a Perfect Body and Great At.mp4'
-output_dir:  'E:/DocumentsBenoit/Doc DaVinci/timelines/outTest2'
+input_video: 'T:\Temp\TeenSexMovs.24.02.07.Lola.Bredly.XXX.1080p.HEVC.x265.PRT[XvX]\TeenSexMovs.24.02.07.Lola.Bredly.XXX.1080p.HEVC.x265.PRT.mkv'
+output_dir:  'E:/DocumentsBenoit/Doc DaVinci/timelines/out'
 
 # Matériel & workers
 device:                     "cuda:0"
@@ -12,18 +12,18 @@ num_workers:                8
 # Fréquences & découpe
 sample_rate:                0.5     # fps pour échantillonnage rapide
 refine_rate:                5.0    # fps pour affinage des bords
-min_clip_duration:          8.0    # durée min clip (secondes)
+min_clip_duration:          5.0    # durée min clip (secondes)
 max_gap:                    3.0     # tolérance gap en secondes
 
 # Seuils & filtres
-max_face_mask_percentage:   30.0    # % max visage masqué
+max_face_mask_percentage:   60.0    # % max visage masqué
 min_face_confidence:        0.6
 min_skin_percentage:        50.0    # % min peau visible sur le corps
 gender_filter:              "female" # "homme"/"femme"/"tous"
 min_gender_confidence:      0.80
-max_head_pitch:             35.0    # deg
+max_head_pitch:             30.0    # deg
 max_head_yaw:               80.0    # deg
-max_head_roll:              35.0    # deg
+max_head_roll:              30.0    # deg
 
 # Activation modules
 enable_body_detection:      false

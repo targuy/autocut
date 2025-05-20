@@ -1,10 +1,23 @@
-import cv2
+import sys
+try:
+    import cv2
+except ImportError:
+    print("[ERROR] Module 'cv2' non trouvé. Veuillez installer OpenCV-Python.")
+    sys.exit(1)
+try:
+    import numpy as np
+except ImportError:
+    print("[ERROR] Module 'numpy' non trouvé. Veuillez installer NumPy.")
+    sys.exit(1)
+try:
+    import torch
+except ImportError:
+    print("[ERROR] Module 'torch' non trouvé. Veuillez installer PyTorch.")
+    sys.exit(1)
 import subprocess
 from pathlib import Path
 from typing import List, Tuple, Optional
 import time
-import numpy as np
-import torch
 
 # Gérer l'absence éventuelle de YOLO (Ultralytics)
 try:
@@ -23,13 +36,21 @@ except ImportError:
     AutoModelForImageClassification = None
     hf_pipeline = None
 
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    print("[ERROR] Module 'PIL' non trouvé. Veuillez installer Pillow.")
+    sys.exit(1)
 from segmenters.skin import SkinSegmenter
 from detectors.mask import face_mask_percentage
 from detectors.nsfw import NSFWWrapper
 from detectors.pose import estimate_head_pose
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    print("[ERROR] Module 'tqdm' non trouvé. Veuillez installer tqdm.")
+    sys.exit(1)
 
 def normalize_gender(label: str) -> str:
     """Normalise les libellés de genre retournés par le modèle (male/female)."""
@@ -104,13 +125,15 @@ class FrameAnalyzer:
         if self.enable_face:
             import importlib.util
             if importlib.util.find_spec("mediapipe") is None:
-                print("[WARN] Module mediapipe non installé - l'orientation de la tête ne sera pas évaluée.")
+                if self.debug:
+                    print("[WARN] Module mediapipe non installé - l'orientation de la tête ne sera pas évaluée.")
 
         # Chargement du détecteur NSFW si demandé
         if enable_nsfw:
             import importlib.util
             if importlib.util.find_spec("nsfw_image_detector") is None:
-                print("[WARN] Détection NSFW activée mais module 'nsfw_image_detector' indisponible - désactivée.")
+                if self.debug:
+                    print("[WARN] Détection NSFW activée mais module 'nsfw_image_detector' indisponible - désactivée.")
                 self.nsfw_detector = None
                 self.enable_nsfw = False
             else:
@@ -122,7 +145,8 @@ class FrameAnalyzer:
         self.gender_clf = None
         if enable_gender:
             if snapshot_download is None or hf_pipeline is None:
-                print("[WARN] Détection de genre activée mais modules transformers absents - désactivée.")
+                if self.debug:
+                    print("[WARN] Détection de genre activée mais modules transformers absents - désactivée.")
                 self.enable_gender = False
             else:
                 try:
@@ -134,7 +158,8 @@ class FrameAnalyzer:
                         device=self.hf_device,
                     )
                 except Exception as e:
-                    print(f"[WARN] Impossible de charger le modèle de genre '{gender_model_id}' : {e}")
+                    if self.debug:
+                        print(f"[WARN] Impossible de charger le modèle de genre '{gender_model_id}' : {e}")
                     self.enable_gender = False
                     self.gender_clf = None
 
@@ -156,82 +181,102 @@ class FrameAnalyzer:
             return metrics
 
         try:
-            # 1) Détection NSFW
+            # 1) NSFW detection (drop SFW frames)
             if self.enable_nsfw and self.nsfw_detector:
+                # call with selected sensitivity mode
                 is_ns, probas = self.nsfw_detector.predict(frame, self.nsfw_mode)
-                metrics["nsfw"], metrics["nsfw_probas"] = is_ns, probas
+                metrics["nsfw"] = is_ns
+                metrics["nsfw_probas"] = probas
+                if self.debug:
+                    # Display all probability levels
+                    prob_dict = probas[0] if isinstance(probas, (list, tuple)) else probas
+                    prob_str = ", ".join(f"{lvl.name}:{score:.3f}" for lvl, score in prob_dict.items())
+                    print(f"[{t:.2f}s] NSFW probabilities ({self.nsfw_mode}): {prob_str}")
+                    print(f"[{t:.2f}s] is_nsfw -> {is_ns}")
+                # Exclude non-NSFW frames
                 if not is_ns:
-                    if self.debug:
-                        print(f"[{t:.2f}s] Frame ignoré (contenu non NSFW)")
                     return fail("nsfw")
 
-            # 2) Détection corps + peau
-            if self.enable_body and self.person_model:
-                res_p = self.person_model(frame, device=self.yolo_device)[0]
-                if not (hasattr(res_p, "masks") and res_p.masks and res_p.masks.data.shape[0] > 0):
+            # 2) Détection du corps (segmentation personnes)
+            if self.enable_body and self.person_model is not None:
+                res = self.person_model.predict(frame, verbose=False, device=self.yolo_device)
+                if not res or res[0].masks is None or res[0].masks.data.size(0) == 0:
                     if self.debug:
                         print(f"[{t:.2f}s] Aucun corps détecté")
-                    return fail("body")
-                mask = res_p.masks.data[0].cpu().numpy() > 0.5
-                ys, xs = np.where(mask)
-                body = frame[ys.min():ys.max(), xs.min():xs.max()]
-                if self.enable_skin:
-                    skin_pct = self.skin_model.percentage(body)
-                    metrics["skin_pct"] = skin_pct
-                    if skin_pct < self.body_th:
-                        if self.debug:
-                            print(f"[{t:.2f}s] Frame ignoré (peau visible {skin_pct:.1f}% < seuil {self.body_th}%)")
-                        return fail("skin")
+                    return fail("personne")
+                # Couverture de la personne détectée (masque)
+                mask = res[0].masks.data[0].cpu().numpy()
+                body_area = mask.sum() / mask.size * 100
+                if body_area < self.body_th:
+                    if self.debug:
+                        print(f"[{t:.2f}s] Peau visible {body_area:.1f}% < seuil {self.body_th}%")
+                    return fail("corps")
 
-            # 3) Tête + visage + genre
-            if self.enable_face and self.face_model:
-                res_f = self.face_model(frame, device=self.yolo_device, conf=self.min_face_conf)[0]
-                if not (hasattr(res_f, "boxes") and len(res_f.boxes) > 0):
+            # 3) Détection visage (bbox)
+            if self.enable_face and self.face_model is not None:
+                res = self.face_model.predict(frame, verbose=False, device=self.yolo_device)
+                if not res or res[0].boxes.data.size(0) == 0:
                     if self.debug:
                         print(f"[{t:.2f}s] Aucun visage détecté")
-                    return fail("face")
-                bx1, by1, bx2, by2 = res_f.boxes.xyxy[0].cpu().numpy().astype(int)
-                face = frame[by1:by2, bx1:bx2]
-
-                # Orientation de la tête
-                pose = estimate_head_pose(frame, (bx1, by1, bx2, by2))
-                if pose is None:
-                    if self.debug:
-                        print(f"[{t:.2f}s] Pose de tête non estimée")
-                    return fail("pose_estimation")
-                pitch, yaw, roll = pose
-                metrics.update({"pitch": pitch, "yaw": yaw, "roll": roll})
-                if abs(pitch) > self.max_head_pitch or abs(yaw) > self.max_head_yaw or abs(roll) > self.max_head_roll:
-                    if self.debug:
-                        print(f"[{t:.2f}s] Tête: angles hors limites (pitch={pitch:.1f}, yaw={yaw:.1f}, roll={roll:.1f})")
-                    return fail("pose_angle")
-
-                # Pourcentage de visage non masqué
-                mask_pct = face_mask_percentage(face)
+                    return fail("visage")
+                # Visage détecté => vérifier le pourcentage de visage visible (sans masque)
+                x1, y1, x2, y2 = res[0].boxes.xyxy[0].cpu().numpy().astype(int)
+                face_roi = frame[y1:y2, x1:x2]  # découpe explicite ici
+                mask_pct = face_mask_percentage(face_roi)
                 metrics["mask_pct"] = mask_pct
-                if 100 - mask_pct < self.face_th:
+                if mask_pct > (100 - self.face_th):
                     if self.debug:
-                        print(f"[{t:.2f}s] Visage visible à {100 - mask_pct:.1f}% (< seuil {self.face_th}%) -> frame ignoré")
-                    return fail("mask")
+                        print(f"[{t:.2f}s] Visage trop masqué ({100-mask_pct:.1f}% visible)")
+                    return fail("masque")
 
-                # Détermination du genre
-                if self.enable_gender:
-                    pil_img = Image.fromarray(cv2.cvtColor(face, cv2.COLOR_BGR2RGB))
-                    lab = self.gender_clf(pil_img)[0] if self.gender_clf else {"label": None, "score": 0.0}
-                    norm = normalize_gender(lab["label"] if lab["label"] else "")
-                    metrics["gender"] = norm
-                    if lab["score"] < self.min_gender_conf:
-                        if self.debug:
-                            print(f"[{t:.2f}s] Confiance genre insuffisante ({lab['score']:.2f} < {self.min_gender_conf})")
-                        return fail("gender_conf")
-                    if self.gender_target != "tous" and norm != self.gender_target:
-                        if self.debug:
-                            target_label = "femme" if self.gender_target == "female" else ("homme" if self.gender_target == "male" else self.gender_target)
-                            norm_label = "femme" if norm == "female" else ("homme" if norm == "male" else norm)
-                            print(f"[{t:.2f}s] Genre détecté : {norm_label} (filtre demandé : {target_label}) -> frame ignoré")
-                        return fail("gender")
+            # 4) Détection surface de peau
+            if self.enable_skin and self.skin_model is not None:
+                skin_mask, skin_pct = self.skin_model.detect(frame)
+                metrics["skin_pct"] = skin_pct
+                if skin_pct < self.min_face_conf:
+                    if self.debug:
+                        # self.min_face_conf est une fraction (ex: 0.5 pour 50%)
+                        print(f"[{t:.2f}s] Peau visible {skin_pct:.1f}% < seuil {self.min_face_conf*100:.0f}%")
+                    return fail("peau")
 
-            # Si toutes les vérifications sont passées, la frame est valide
+            # 5) Orientation de la tête (si visage détecté)
+            if self.enable_face:
+                try:
+                    angles = estimate_head_pose(frame)
+                    metrics["pitch"], metrics["yaw"], metrics["roll"] = angles
+                    if abs(metrics["pitch"]) > self.max_head_pitch or abs(metrics["yaw"]) > self.max_head_yaw or abs(metrics["roll"]) > self.max_head_roll:
+                        if self.debug:
+                            print(f"[{t:.2f}s] Tête hors limites ({metrics['pitch']:.1f},{metrics['yaw']:.1f},{metrics['roll']:.1f})")
+                        return fail("pose")
+                except Exception:
+                    # Échec silencieux si absence de mediapipe par ex.
+                    pass
+
+            # 6) Classification de genre (si demandé)
+            if self.enable_gender and self.gender_clf is not None:
+                try:
+                    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    preds = self.gender_clf(img)[0]
+                    label = preds["label"]
+                    conf = preds["score"]
+                    if conf < 0.5:
+                        if self.debug:
+                            print(f"[{t:.2f}s] Confiance genre {conf:.2f} < 0.5")
+                        return fail("genre_conf")
+                    label = normalize_gender(label)
+                    metrics["gender"] = label
+                    if self.gender_target in ("male", "female"):
+                        # Filtre homme/femme demandé => exclure l'autre genre
+                        if label != self.gender_target:
+                            if self.debug:
+                                print(f"[{t:.2f}s] Genre détecté {label} != filtre {self.gender_target}")
+                            return fail("genre")
+                except Exception as e:
+                    if self.debug:
+                        print(f"[ERROR] analyze_frame exception: {e}")
+                    return fail("exception")
+
+            # Frame validée si on arrive ici
             metrics["valid"] = True
             metrics["reason"] = ["all_pass"]
             metrics["proc_ms"] = (time.time() - start) * 1000
@@ -260,7 +305,7 @@ class VideoAnalyzer:
         self.num_workers = num_workers
 
     def process(self, video_path: str, out_dir: str = "clips") -> List[Tuple[float, float]]:
-        """Analyse la vidéo donnée et génère les clips extraits, puis retourne les intervalles (début, fin) de chaque clip."""
+        """Analyse la vidéo et génère les clips extraits, retourne les intervalles (start, end)."""
         vid = Path(video_path)
         cap = cv2.VideoCapture(str(vid))
         if not cap.isOpened():
@@ -271,7 +316,6 @@ class VideoAnalyzer:
             print(f"[ERROR] FPS invalide ({fps}). Vérifiez le fichier vidéo.")
             cap.release()
             return []
-        # Infos vidéo pour debug
         duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
         if self.fa.debug:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -283,13 +327,11 @@ class VideoAnalyzer:
         gaps = 0
         last_t = 0.0
         timestamps, futures = [], []
-
-        # Soumission des frames à analyser (multithread)
+        # Soumettre les frames pour analyse
         with ThreadPoolExecutor(max_workers=self.num_workers) as exe:
-            for t in tqdm(np.arange(0.0, duration, dt), desc="Analyse frames"):
+            for t in np.arange(0.0, duration, dt):
                 cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-                grabbed = cap.grab()
-                if not grabbed:
+                if not cap.grab():
                     break
                 ret, frame = cap.retrieve()
                 if not ret or frame is None:
@@ -298,21 +340,24 @@ class VideoAnalyzer:
                 timestamps.append(t)
         cap.release()
 
-        # Collecte des résultats d'analyse
         results = []
-        for fut, t in zip(futures, timestamps):
+        for fut, ts in zip(futures, timestamps):
             try:
-                results.append((t, fut.result()))
+                results.append((ts, fut.result()))
             except Exception as e:
-                print(f"[Thread] erreur @ t={t:.2f}s : {e}")
+                print(f"[Thread] Erreur @ {ts:.2f}s : {e}")
 
-        # Découpage en segments en se basant sur la validité des frames
-        for t, info in results:
+        intervals = []
+        in_seg = False
+        gaps = 0
+        last_t = 0.0
+        seg_start = 0.0
+        for ts, info in results:
             if info["valid"]:
                 if not in_seg:
-                    seg_start = max(0.0, t - dt)
+                    seg_start = max(0.0, ts - dt)
                     in_seg = True
-                last_t = t
+                last_t = ts
                 gaps = 0
             elif in_seg:
                 gaps += 1
@@ -320,16 +365,13 @@ class VideoAnalyzer:
                     if last_t - seg_start >= self.min_dur:
                         intervals.append((seg_start, last_t))
                     in_seg = False
-
-        # Clôturer le segment final éventuellement ouvert
+        # Si la vidéo se termine alors qu'un segment est en cours
         if in_seg and last_t - seg_start >= self.min_dur:
             intervals.append((seg_start, last_t))
 
-        # Écriture des clips vidéo via ffmpeg
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        saved_intervals: List[Tuple[float, float]] = []
-        # Préfixe pour nommer les fichiers de sortie (basé sur nom de la vidéo source)
-        prefix_base = Path(video_path).stem
+        saved_intervals = []
+        prefix_base = vid.stem or "video"
         prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip() or "video"
         for i, (s, e) in enumerate(intervals, start=1):
             out_file = Path(out_dir) / f"{prefix}_edited_{i:03d}.mp4"
