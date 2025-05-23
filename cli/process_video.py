@@ -11,6 +11,7 @@ import time
 import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Callable
+import subprocess
 
 try:
     from tqdm import tqdm
@@ -31,7 +32,7 @@ except ImportError as e:
 
 # --- ajout : générateur de titres multimodal ------------------------------ #
 try:
-    from title_generator import TitleGenerator as _TG
+    from pipeline.title_generator import TitleGenerator as _TG
 except ImportError:
     _TG = None  # None si module manquant (pas de génération de titres)
 # -------------------------------------------------------------------------- #
@@ -50,16 +51,18 @@ def _build_title_generator(cfg) -> Optional[Callable]:
             print("[WARN] title_generation activé mais le module title_generator.py est introuvable.")
         return None
     # Vérifier que le serveur LMStudio est lancé et le modèle chargé
-    from title_generator import ensure_server_running
+    from pipeline.title_generator import ensure_server_running
     if not ensure_server_running(cfg.title_generation.model, cfg.title_generation.endpoint):
         print("[TitleGeneration] LMStudio ne répond pas. Veuillez le lancer manuellement.")
         return None
-    # Retourner une instance configurée de TitleGenerator
-    return _TG(
-        endpoint=cfg.title_generation.endpoint,
-        model=cfg.title_generation.model,
-        prompt_template=cfg.title_generation.prompt,
-    )
+    # Retourner une fabrique configurée de TitleGenerator
+    def factory():
+        return _TG(
+            endpoint=cfg.title_generation.endpoint,
+            model=cfg.title_generation.model,
+            prompt_template=cfg.title_generation.prompt,
+        )
+    return factory
 
 def _print_header(cfg):
     print("=== AutoCutVideo Début ===")
@@ -98,7 +101,7 @@ def main():
         description="AutoCutVideo – analyse, découpe et titrage automatique"
     )
     parser.add_argument(
-        "--config", "-c", default="config.yaml",
+        "--config", "-c", default="config.yml",
         help="Chemin du fichier YAML de configuration"
     )
     parser.add_argument(
@@ -163,7 +166,8 @@ def main():
         num_workers=cfg.num_workers,
     )
 
-    title_gen = _build_title_generator(cfg)
+    title_gen_factory = _build_title_generator(cfg)
+    title_gen = title_gen_factory() if callable(title_gen_factory) else None
 
     for video in videos_to_process:
         rel_label = video.relative_to(input_path) if input_path.is_dir() else video.name
@@ -173,6 +177,7 @@ def main():
             out_subdir = Path(cfg.output_dir) / video.relative_to(input_path).parent / video.stem
         else:
             out_subdir = Path(cfg.output_dir) / video.stem
+        out_subdir.mkdir(parents=True, exist_ok=True)
 
         t0 = time.time()
         try:
@@ -201,13 +206,25 @@ def main():
         prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
         if prefix == "":
             prefix = "video"
-        clip_paths = sorted(Path(out_subdir).glob(f"{prefix}_edited_*.mp4"))
+
+        clip_paths = []
+        for i, (start, end) in enumerate(clips, 1):
+            out_path = Path(out_subdir) / f"{prefix}_edited_{i:03d}.mp4"
+            # Découpe le clip avec ffmpeg
+            cmd = [
+                "ffmpeg", "-y", "-i", str(video),
+                "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+                "-c", "copy", str(out_path)
+            ]
+            subprocess.run(cmd, check=True)
+            clip_paths.append(out_path)
 
         if title_gen:
             if cfg.debug:
                 print("Génération des titres…")
             for p in (tqdm(clip_paths, desc="Titres", leave=False) if cfg.debug else clip_paths):
                 try:
+                    # Délègue extraction image + titre à TitleGenerator
                     title = title_gen.generate_title_from_video(str(p))
                     if not title or title.strip() == "" or title.lower().startswith("clip_"):
                         if cfg.debug:
