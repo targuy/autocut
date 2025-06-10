@@ -1,0 +1,25 @@
+{
+  "terminal.integrated.profiles.windows": {
+    "CMD (Miniforge)": {
+      "path": "C:\\Windows\\System32\\cmd.exe",
+      "args": ["/K", "C:\\Users\\benoi\\miniforge3\\condabin\\conda.bat activate"]
+    },
+    "PowerShell (Miniforge)": {
+      "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& 'C:\\Users\\benoi\\miniforge3\\shell\\condabin\\conda-hook.ps1'"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell (Miniforge)"
+}
+{
+    "[yaml]": {
+        "editor.defaultFormatter": "redhat.vscode-yaml",
+        "editor.formatOnSave": true
+    },
+    "yaml.format.singleQuote": true,
+    "editor.autoClosingQuotes": "never"
+}

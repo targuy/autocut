@@ -106,7 +106,7 @@ def generate_titles(image_paths, prompt: str, model: str, endpoint: str):
     """
     # Fonction interne pour traiter une image individuelle
     def process_image(img_path: str):
-        # traite une seule image vers LMStudio et renvoie le titre généré.
+
         try:
             with open(img_path, "rb") as f:
                 img_data = base64.b64encode(f.read()).decode('utf-8')
