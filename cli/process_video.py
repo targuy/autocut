@@ -182,11 +182,55 @@ def main():
         t0 = time.time()
         try:
             clips = va.process(str(video), out_dir=str(out_subdir))
+            prefix_base = video.stem
+            prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
+            if prefix == "":
+                prefix = "video"
+
+            clip_paths = []
+            for i, (start, end) in enumerate(clips, 1):
+                out_path = Path(out_subdir) / f"{prefix}_edited_{i:03d}.mp4"
+                cmd = [
+                    "ffmpeg", "-y", "-i", str(video),
+                    "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+                    "-c", "copy", str(out_path)
+                ]
+                try:
+                    subprocess.run(cmd, check=True)
+                    clip_paths.append(out_path)
+                except subprocess.CalledProcessError as e:
+                    print(f"[ERROR] ffmpeg failed for clip {out_path.name} of video {video.name}: {e}")
+                    continue  # Continue with next clip
+
+            if title_gen:
+                if cfg.debug:
+                    print("Génération des titres…")
+                for p in (tqdm(clip_paths, desc="Titres", leave=False) if cfg.debug else clip_paths):
+                    try:
+                        # Délègue extraction image + titre à TitleGenerator
+                        title = title_gen.generate_title_from_video(str(p))
+                        if not title or title.strip() == "" or title.lower().startswith("clip_"):
+                            if cfg.debug:
+                                print(f"[TitleGen] Aucun titre généré pour {p.name}, nom conservé.")
+                            continue
+                        new_path = _rename_clip(p, title)
+                        if cfg.debug:
+                            print(f"[DEBUG] {p.name} -> {new_path.name}")
+                    except Exception as exc:
+                        print(f"[TitleGen] Erreur sur {p.name}: {exc}")
+            if cfg.debug:
+                print("Clips finaux :")
+                for p in Path(out_subdir).iterdir():
+                    if p.suffix.lower() == ".mp4":
+                        print(f"  • {p.name}")
+                print(f"--- Fin traitement vidéo : {rel_label} ---\n")
+
         except Exception as e:
             print(f"[ERROR] Erreur durant le traitement de la vidéo {video}: {e}")
             if cfg.debug:
                 print(f"--- Fin traitement vidéo : {rel_label} ---\n")
-            continue
+            continue  # Continue with next video
+
         elapsed = time.time() - t0
 
         if cfg.debug:
@@ -201,46 +245,6 @@ def main():
             if cfg.debug:
                 print(f"--- Fin traitement vidéo : {rel_label} ---\n")
             continue
-
-        prefix_base = video.stem
-        prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
-        if prefix == "":
-            prefix = "video"
-
-        clip_paths = []
-        for i, (start, end) in enumerate(clips, 1):
-            out_path = Path(out_subdir) / f"{prefix}_edited_{i:03d}.mp4"
-            # Découpe le clip avec ffmpeg
-            cmd = [
-                "ffmpeg", "-y", "-i", str(video),
-                "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
-                "-c", "copy", str(out_path)
-            ]
-            subprocess.run(cmd, check=True)
-            clip_paths.append(out_path)
-
-        if title_gen:
-            if cfg.debug:
-                print("Génération des titres…")
-            for p in (tqdm(clip_paths, desc="Titres", leave=False) if cfg.debug else clip_paths):
-                try:
-                    # Délègue extraction image + titre à TitleGenerator
-                    title = title_gen.generate_title_from_video(str(p))
-                    if not title or title.strip() == "" or title.lower().startswith("clip_"):
-                        if cfg.debug:
-                            print(f"[TitleGen] Aucun titre généré pour {p.name}, nom conservé.")
-                        continue
-                    new_path = _rename_clip(p, title)
-                    if cfg.debug:
-                        print(f"[DEBUG] {p.name} -> {new_path.name}")
-                except Exception as exc:
-                    print(f"[TitleGen] Erreur sur {p.name}: {exc}")
-        if cfg.debug:
-            print("Clips finaux :")
-            for p in Path(out_subdir).iterdir():
-                if p.suffix.lower() == ".mp4":
-                    print(f"  • {p.name}")
-            print(f"--- Fin traitement vidéo : {rel_label} ---\n")
 
     if cfg.debug:
         print("=== AutoCutVideo Fin ===")
