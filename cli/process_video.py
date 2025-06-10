@@ -179,6 +179,22 @@ def main():
             out_subdir = Path(cfg.output_dir) / video.stem
         out_subdir.mkdir(parents=True, exist_ok=True)
 
+        # Vérification AVANT toute analyse
+        existing_clips = list(out_subdir.glob("*.mp4"))
+        if existing_clips:
+            print(f"[INFO] Des clips existent déjà pour {rel_label}.")
+            resp = input("Voulez-vous retraiter cette vidéo ? (o/n) : ").strip().lower()
+            if resp != "o":
+                print(f"[INFO] Vidéo {rel_label} ignorée.")
+                continue
+            # Supprimer les anciens clips
+            for clip in existing_clips:
+                try:
+                    clip.unlink()
+                except Exception as e:
+                    print(f"[WARN] Impossible de supprimer {clip}: {e}")
+
+        # Seulement ici on commence l'analyse et la découpe
         t0 = time.time()
         try:
             clips = va.process(str(video), out_dir=str(out_subdir))
