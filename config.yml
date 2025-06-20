@@ -2,7 +2,7 @@
 # Configuration AutoCutVideo
 
 # Vidéo
-input_video: 'T:/Temp'
+input_video: 'E:/DocumentsBenoit/Doc DaVinci/timelines/in'
 output_dir:  'E:/DocumentsBenoit/Doc DaVinci/timelines/out'
 
 # Matériel & workers
@@ -11,9 +11,9 @@ num_workers:                8
 
 # Fréquences & découpe
 sample_rate:                0.1     # fps pour échantillonnage rapide
-refine_rate:                5.0    # fps pour affinage des bords
-min_clip_duration:          15.0    # durée min clip (secondes)
-max_gap:                    11.0     # tolérance gap en secondes
+refine_rate:                24.0    # fps pour affinage des bords
+min_clip_duration:          12.0    # durée min clip (secondes)
+max_gap:                    10.0     # tolérance gap en secondes
 
 # Seuils & filtres
 max_face_mask_percentage:   50.0    # % max visage masqué
@@ -24,9 +24,9 @@ min_frame_person_coverage:  10.0
 
 gender_filter:              'female' # 'homme'/'femme'/'tous'
 min_gender_confidence:      0.80
-max_head_pitch:             40.0    # deg
-max_head_yaw:               90.0    # deg
-max_head_roll:              40.0    # deg
+max_head_pitch:             35.0    # deg
+max_head_yaw:               75.0    # deg
+max_head_roll:              35.0    # deg
 
 # Activation modules
 enable_body_detection:      false

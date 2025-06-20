@@ -173,14 +173,17 @@ def main():
         rel_label = video.relative_to(input_path) if input_path.is_dir() else video.name
         if cfg.debug:
             print(f"\n--- Traitement de la vidéo : {rel_label} ---")
+        # Construction du chemin de sortie
         if input_path.is_dir():
             out_subdir = Path(cfg.output_dir) / video.relative_to(input_path).parent / video.stem
         else:
             out_subdir = Path(cfg.output_dir) / video.stem
-        out_subdir.mkdir(parents=True, exist_ok=True)
 
         # Vérification AVANT toute analyse
-        existing_clips = list(out_subdir.glob("*.mp4"))
+        try:
+            existing_clips = list(out_subdir.glob("*.mp4"))
+        except Exception as e:
+            existing_clips = []
         if existing_clips:
             print(f"[INFO] Des clips existent déjà pour {rel_label}.")
             resp = input("Voulez-vous retraiter cette vidéo ? (o/n) : ").strip().lower()
@@ -194,7 +197,32 @@ def main():
                 except Exception as e:
                     print(f"[WARN] Impossible de supprimer {clip}: {e}")
 
-        # Seulement ici on commence l'analyse et la découpe
+        # Tentative de création du dossier de sortie, gestion des noms invalides
+        try:
+            out_subdir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"[ERROR] Impossible de créer le dossier de sortie {out_subdir}: {e}")
+            # Proposer un nom nettoyé
+            cleaned_stem = "".join(c for c in video.stem if c.isalnum() or c in (" ", "_", "-")).strip()
+            cleaned_stem = cleaned_stem.rstrip(". ")  # Supprime points/espaces finaux
+            if not cleaned_stem:
+                cleaned_stem = "video"
+            cleaned_subdir = out_subdir.parent / cleaned_stem
+            print(f"[INFO] Proposition de nom corrigé : {cleaned_subdir}")
+            resp = input("Utiliser ce nom corrigé ? (o/n) : ").strip().lower()
+            if resp == "o":
+                try:
+                    cleaned_subdir.mkdir(parents=True, exist_ok=True)
+                    out_subdir = cleaned_subdir
+                except Exception as e2:
+                    print(f"[ERROR] Impossible de créer le dossier corrigé : {e2}")
+                    print(f"[INFO] Vidéo {rel_label} ignorée.")
+                    continue
+            else:
+                print(f"[INFO] Vidéo {rel_label} ignorée.")
+                continue
+
+        # Bloc principal d'analyse et de découpe
         t0 = time.time()
         try:
             clips = va.process(str(video), out_dir=str(out_subdir))
@@ -223,7 +251,6 @@ def main():
                     print("Génération des titres…")
                 for p in (tqdm(clip_paths, desc="Titres", leave=False) if cfg.debug else clip_paths):
                     try:
-                        # Délègue extraction image + titre à TitleGenerator
                         title = title_gen.generate_title_from_video(str(p))
                         if not title or title.strip() == "" or title.lower().startswith("clip_"):
                             if cfg.debug:
