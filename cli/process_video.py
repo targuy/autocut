@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Callable
 import subprocess
+import unicodedata
 
 try:
     from tqdm import tqdm
@@ -30,32 +31,27 @@ except ImportError as e:
     print(f"[ERROR] Impossible d'importer 'pipeline.analyzer' : {e}")
     sys.exit(1)
 
-# --- ajout : générateur de titres multimodal ------------------------------ #
+# --- générateur de titres multimodal -------------------------------------- #
 try:
     from pipeline.title_generator import TitleGenerator as _TG
 except ImportError:
-    _TG = None  # None si module manquant (pas de génération de titres)
+    _TG = None
 # -------------------------------------------------------------------------- #
 
 def _build_title_generator(cfg) -> Optional[Callable]:
     """
-    Retourne une instance de TitleGenerator si :
-      • activé dans le YAML
-      • module disponible et LM-Studio opérationnel
-    Sinon retourne None.
+    Retourne une instance de TitleGenerator si activé et serveur OK, sinon None.
     """
-    if not cfg.title_generation.enabled:
+    if not getattr(cfg, 'title_generation', None) or not cfg.title_generation.enabled:
         return None
     if _TG is None:
         if cfg.debug:
             print("[WARN] title_generation activé mais le module title_generator.py est introuvable.")
         return None
-    # Vérifier que le serveur LMStudio est lancé et le modèle chargé
     from pipeline.title_generator import ensure_server_running
     if not ensure_server_running(cfg.title_generation.model, cfg.title_generation.endpoint):
         print("[TitleGeneration] LMStudio ne répond pas. Veuillez le lancer manuellement.")
         return None
-    # Retourner une fabrique configurée de TitleGenerator
     def factory():
         return _TG(
             endpoint=cfg.title_generation.endpoint,
@@ -75,18 +71,31 @@ def _print_header(cfg):
     print(f"Workers          : {cfg.num_workers}")
     print(f"Filtre genre     : {cfg.gender_filter}")
     print(f"Debug            : {cfg.debug}")
-    print(f"Modules actifs   : body={cfg.enable_body_detection} skin={cfg.enable_skin_detection} face={cfg.enable_face_detection} gender={cfg.enable_gender_detection} nsfw={cfg.enable_nsfw}")
+    print(f"Modules actifs   : face={cfg.enable_face_detection} gender={cfg.enable_gender_detection} nsfw={cfg.enable_nsfw}")
     print(f"NSFW mode        : {cfg.nsfw_mode}")
     print(f"Pose seuils      : pitch={cfg.max_head_pitch}  yaw={cfg.max_head_yaw}  roll={cfg.max_head_roll}")
-    if cfg.title_generation.enabled:
+    print(f"Tolérance gaps   : {cfg.max_gap}s (secondes de trous autorisées)")
+    if getattr(cfg, 'title_generation', None) and cfg.title_generation.enabled:
         print("Génération titre : ON  " f"(modèle={cfg.title_generation.model})")
     else:
         print("Génération titre : OFF")
     print("-" * 31)
 
+def _to_safe_filename(text: str) -> str:
+    """Normalise le texte en un nom de fichier ASCII-safe (accents/emoji retirés)."""
+    # Normalisation Unicode et suppression des diacritiques
+    normalized = unicodedata.normalize('NFKD', text)
+    stripped = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    # Garder uniquement un set sûr pour fichiers (ASCII alnum + espace + _ -)
+    safe = ''.join(c for c in stripped if (c.isalnum() or c in (' ', '_', '-')))
+    safe = safe.strip().rstrip('. ')
+    if not safe:
+        safe = 'clip'
+    return safe
+
 def _rename_clip(path: Path, title: str) -> Path:
-    """Renomme le fichier `path` en utilisant `title` (en gérant les doublons)."""
-    base = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
+    """Renomme le fichier `path` avec un titre Unicode → ASCII-safe pour le FS."""
+    base = _to_safe_filename(title)
     stem, ext = base, path.suffix
     candidate = path.with_stem(stem)
     counter = 1
@@ -95,6 +104,7 @@ def _rename_clip(path: Path, title: str) -> Path:
         counter += 1
     path.rename(candidate)
     return candidate
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -108,11 +118,21 @@ def main():
         "--debug", action="store_true",
         help="Activer le mode debug (prioritaire sur YAML)"
     )
+    # Option CLI pour tolérance en secondes (override YAML)
+    parser.add_argument(
+        "--max-gap-sec", type=float, default=None,
+        help="Tolérance en secondes de frames négatives consécutives avant coupure (remplace max_gap du YAML)"
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     if args.debug:
         cfg.debug = True
+    if args.max_gap_sec is not None:
+        try:
+            cfg.max_gap = max(0.0, float(args.max_gap_sec))
+        except Exception:
+            print("[WARN] --max-gap-sec invalide, valeur ignorée.")
 
     if cfg.debug:
         _print_header(cfg)
@@ -133,18 +153,13 @@ def main():
 
     # ---------------- Analyseur de frames ---------------- #
     fa = FrameAnalyzer(
-        person_segm_weights=cfg.person_segm_weights,
         face_bbox_weights=cfg.face_bbox_weights,
-        skin_segm_weights=cfg.skin_segm_weights,
         gender_model_id=cfg.gender_model_id,
         device=cfg.device,
-        body_coverage_threshold=cfg.min_frame_person_coverage,
         min_visible_face_threshold=(100.0 - cfg.max_face_mask_percentage),
+        min_face_bbox_area_pct=cfg.min_face_bbox_area_pct,
         gender=cfg.gender_filter,
         debug=cfg.debug,
-        enable_body=cfg.enable_body_detection,
-        enable_skin=cfg.enable_skin_detection,
-        min_skin_pct_threshold=cfg.min_person_skin_percentage,
         enable_face=cfg.enable_face_detection,
         enable_gender=cfg.enable_gender_detection,
         enable_nsfw=cfg.enable_nsfw,
@@ -182,7 +197,7 @@ def main():
         # Vérification AVANT toute analyse
         try:
             existing_clips = list(out_subdir.glob("*.mp4"))
-        except Exception as e:
+        except Exception:
             existing_clips = []
         if existing_clips:
             print(f"[INFO] Des clips existent déjà pour {rel_label}.")
@@ -190,21 +205,18 @@ def main():
             if resp != "o":
                 print(f"[INFO] Vidéo {rel_label} ignorée.")
                 continue
-            # Supprimer les anciens clips
             for clip in existing_clips:
                 try:
                     clip.unlink()
                 except Exception as e:
                     print(f"[WARN] Impossible de supprimer {clip}: {e}")
 
-        # Tentative de création du dossier de sortie, gestion des noms invalides
         try:
             out_subdir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print(f"[ERROR] Impossible de créer le dossier de sortie {out_subdir}: {e}")
-            # Proposer un nom nettoyé
-            cleaned_stem = "".join(c for c in video.stem if c.isalnum() or c in (" ", "_", "-")).strip()
-            cleaned_stem = cleaned_stem.rstrip(". ")  # Supprime points/espaces finaux
+            cleaned_stem = ''.join(c for c in video.stem if c.isalnum() or c in (" ", "_", "-")).strip()
+            cleaned_stem = cleaned_stem.rstrip(". ")
             if not cleaned_stem:
                 cleaned_stem = "video"
             cleaned_subdir = out_subdir.parent / cleaned_stem
@@ -222,12 +234,11 @@ def main():
                 print(f"[INFO] Vidéo {rel_label} ignorée.")
                 continue
 
-        # Bloc principal d'analyse et de découpe
         t0 = time.time()
         try:
             clips = va.process(str(video), out_dir=str(out_subdir))
             prefix_base = video.stem
-            prefix = "".join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")).strip()
+            prefix = ''.join(c for c in prefix_base if c.isalnum() or c in (" ", "_", "-")) .strip()
             if prefix == "":
                 prefix = "video"
 
@@ -244,7 +255,7 @@ def main():
                     clip_paths.append(out_path)
                 except subprocess.CalledProcessError as e:
                     print(f"[ERROR] ffmpeg failed for clip {out_path.name} of video {video.name}: {e}")
-                    continue  # Continue with next clip
+                    continue
 
             if title_gen:
                 if cfg.debug:
@@ -272,7 +283,7 @@ def main():
             print(f"[ERROR] Erreur durant le traitement de la vidéo {video}: {e}")
             if cfg.debug:
                 print(f"--- Fin traitement vidéo : {rel_label} ---\n")
-            continue  # Continue with next video
+            continue
 
         elapsed = time.time() - t0
 

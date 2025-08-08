@@ -1,191 +1,139 @@
 # AutoCutVideo
 
-AutoCutVideo est un pipeline Python modulaire et performant pour analyser des vidéos, détecter des personnes, classifier leur genre (homme/femme), mesurer l’exposition du visage et la proportion de peau visible, puis découper automatiquement des clips répondant à des critères configurables.
+AutoCutVideo fournit un workflow modulaire et performant pour analyser des vidéos, appliquer des critères (NSFW, présence femme, visibilité du visage, pose), découper automatiquement des clips valides et générer des métadonnées via un LLM local (LM Studio). Cible principale Windows 11 + CUDA, fallback Apple Silicon.
 
 ---
 
-## Table des matières
-
-- [Fonctionnalités](#fonctionnalités)  
-- [Architecture et modules](#architecture-et-modules)  
-- [Installation](#installation)  
-- [Configuration](#configuration)  
-- [Usage CLI principal](#usage-cli-principal)  
-- [Tests CLI sur image unique](#tests-cli-sur-image-unique)  
-- [Exemple d’exécution](#exemple-dexécution)  
-- [Développement & tests](#développement--tests)  
-- [Contribuer](#contribuer)  
-- [Licence](#licence)  
+## Sommaire
+- Présentation
+- Installation
+- Configuration (config.yml)
+- CLI et usages
+- Spécifications détaillées
+- Architecture
+- Tests & Qualité
+- Performances
+- Contribution
 
 ---
 
-## Fonctionnalités
-
-- **Détection de personnes** via YOLOv8 segmentation (`person_yolov8m-seg`).  
-- **Localisation du visage** via YOLOv8 détection (`face_yolov8m.pt`).  
-- **Mesure du masquage du visage** (pourcentage masqué).  
-- **Segmentation de la peau** via YOLOv8 segmentation (`skin_yolov8m-seg`).  
-- **Classification du genre** (“homme” / “femme” / “tous”) via un modèle Hugging Face Transformers local.  
-- **Échantillonnage** à 1 fps (configurable) pour vitesse, puis **affinage** à 24 fps pour trouver l’entrée/sortie exactes.  
-- **Découpe** de segments continus satisfaisant les critères (durée minimale configurable) en clips MP4 sans réencodage.
-
----
-
-## Architecture et modules
-
-```
-AutoCutVideo/
-├── cli/
-│   ├── process_video.py        # Point d’entrée principal CLI
-│   ├── test_person.py          # CLI test segmentation corps
-│   ├── test_face.py            # CLI test détection visage
-│   ├── test_skin.py            # CLI test segmentation peau
-│   └── test_gender.py          # CLI test classification genre
-├── config.py                   # Loader YAML → dataclass Config
-├── config.yaml                 # Paramètres par défaut
-├── detectors/
-│   └── mask.py                 # Calcul % visage masqué
-├── segmenters/
-│   └── skin.py                 # Segmentation peau
-├── pipeline/
-│   └── analyzer.py             # FrameAnalyzer & VideoAnalyzer
-├── utils.py                    # Fonctions utilitaires
-├── tests/                      # Tests pytest
-└── README.md                   # Cette documentation
-```
+## Présentation
+- Normalisation (future étape): scale+pad vers une résolution/fps cible (par défaut 1280x720@24) avant l'analyse/découpe.
+- Détection rapide des cuts (future étape): ffmpeg scene → bornes brutes, refine pour nettoyer les transitions.
+- Analyse: détection visage, NSFW, genre (actuellement sur l'image; ROI visage à venir), pose tête; tolérance aux faux négatifs.
+- Découpe: segments validés uniquement (stream-copy) selon les critères.
+- Description LLM (future étape): X images/clip → JSON par image → vote → {clip}.json.
 
 ---
 
 ## Installation
-
-1. **Cloner le dépôt**  
-   ```bash
-   git clone https://votre-repo/AutoCutVideo.git
-   cd AutoCutVideo
-   ```
-
-2. **Installer Poetry** (si nécessaire)  
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   ```
-
-3. **Installer les dépendances**  
-   ```bash
-   poetry install
-   ```
-
-4. **Activer l’environnement**  
-   ```bash
-   poetry shell
-   ```
+- Python 3.10 recommandé.
+- Installez via Poetry:
+  - poetry install
+  - poetry run autocut --help
+- ffmpeg requis (concat/cut/probe). Assurez-vous que `ffmpeg` est dans le PATH.
 
 ---
 
-## Configuration
+## Configuration (config.yml)
+Clés principales:
+- Entrées/sorties
+  - input_video: fichier unique ou dossier
+  - output_dir: dossier de sortie
+- Exécution
+  - device: cuda:0 | cpu
+  - num_workers: nombre de threads d'analyse
+- Échantillonnage & segments
+  - sample_rate: fps d’échantillonnage
+  - refine_rate: fps pour l’affinage (réservé)
+  - min_clip_duration: durée min d’un clip (s)
+  - max_gap: tolérance de trous négatifs en secondes (ex. 10)
+- Critères
+  - gender_filter: male|female|tous
+  - min_face_confidence: seuil détection visage
+  - max_face_mask_percentage: % max masqué (min visible = 100 - ce seuil)
+  - min_face_bbox_area_pct: % min aire bbox visage vs image
+  - min_gender_confidence: confiance min genre
+  - max_head_pitch|yaw|roll: seuils pose (deg)
+  - enable_*: face/gender/nsfw
+  - nsfw_mode: high|medium|low (politique fine au niveau pipeline futur)
+- Modèles
+  - face_bbox_weights
+  - gender_model_id
+- Titrage (optionnel)
+  - title_generation: enabled, model, prompt, endpoint
 
-Les paramètres sont centralisés dans `config.yaml`. Exemple :
-
-```yaml
-input_video:                "E:/Videos/input.mp4"
-output_dir:                 "E:/Videos/clips"
-device:                     "cuda"
-num_workers:                4
-sample_rate:                1.0
-refine_rate:                24.0
-min_clip_duration:          5.0
-gender_filter:              "tous"
-max_face_mask_percentage:   25.0
-min_skin_percentage:        50.0
-person_segm_weights:        "E:/.../person_yolov8m-seg.pt"
-face_bbox_weights:          "E:/.../face_yolov8m.pt"
-skin_segm_weights:          "E:/.../skin_yolov8m-seg_400.pt"
-gender_model_dir:           "E:/.../gender/rizandwiki-gender"
-```
-
----
-
-## Usage CLI principal
-
-Une fois configuré, lancez :
-
-```bash
-python main.py --config config.yaml
-```
-
-Ou, si vous avez défini le script Poetry :
-
-```bash
-poetry run autocut --config config.yaml
-```
-
-Les clips seront générés dans le dossier `output_dir` spécifié. La console affichera le nombre de clips créés et leurs intervalles.
+Un exemple à jour est présent dans `config.yml`.
 
 ---
 
-## Tests CLI sur image unique
+## CLI et usages
+- Analyse + découpe principale
+  - poetry run autocut -c config.yml [--debug] [--max-gap-sec S]
+  - Génère des clips `*_edited_###.mp4` dans `output_dir/<video_stem>/`.
 
-Pour tester chaque composant indépendamment sur une seule image :
+- Assemblage de clips
+  - python -m cli.assemble SRC_DIR DEST_DIR [--min-duration S] [--criteria key:value]
+  - Concatène les clips par préfixe (ex. prefix_edited_001.mp4, 002, …) en `prefix_joined.mp4`.
+  - Options:
+    - --min-duration: filtre de durée minimale (s)
+    - --criteria: filtre par métadonnées JSON associées (dot-path support), ex:
+      - --criteria describe.voted.nsfw:true
+      - --criteria age:old
+    - Répéter l’option pour cumuler les critères.
 
-- **test_person.py** : segmentation du corps  
-  ```bash
-  python cli/test_person.py chemin/vers/image.jpg --config config.yaml
-  ```
-- **test_face.py** : détection de visages  
-  ```bash
-  python cli/test_face.py chemin/vers/image.jpg --config config.yaml
-  ```
-- **test_skin.py** : segmentation de la peau et pourcentage visible  
-  ```bash
-  python cli/test_skin.py chemin/vers/image.jpg --config config.yaml
-  ```
-- **test_gender.py** : classification du genre  
-  ```bash
-  python cli/test_gender.py chemin/vers/image.jpg --config config.yaml
-  ```
+- Test image unique
+  - python -m cli.test_frame IMG --config config.yml [--branch full|head] [--debug]
 
-Chaque script renvoie du JSON avec les résultats (BBOX, pourcentages, labels, confiances…).
+D’autres CLIs (normalize, scenes, describe) seront ajoutées ultérieurement.
 
 ---
 
-## Exemple d’exécution
-
-```bash
-$ python main.py -c config.yaml
-[INFO] Chargement de la configuration…
-[INFO] Initialisation des modèles sur cuda
-[INFO] Vidéo ouverte (fps=24.00, durée=1200.0s)
-[INFO] Échantillonnage à 1.0 fps, affinage à 24.0 fps
-[✔] Généré 12 clip(s) dans « E:/Videos/clips »
-```
-
----
-
-## Développement & tests
-
-- **Tests unitaires** :  
-  ```bash
-  pytest --maxfail=1 --disable-warnings -q
-  ```
-- **Lint & format** :  
-  ```bash
-  flake8 .
-  black .
-  ```
-- **CI/CD** : GitHub Actions intégré pour tests, lint, coverage.
+## Spécifications détaillées (résumé)
+- Normalisation (à venir): 1280x720@24 par défaut, letterbox, codec matériel (NVENC/VideoToolbox).
+- Cuts (à venir): ffmpeg scene threshold, refine pré/post transitions (fondu).
+- Critères (analyse courante):
+  - NSFW: wrapper stable, décision finale au niveau pipeline.
+  - Présence femme: garder si ≥1 femme (seule ou mixte), rejeter “homme seul/aucune personne”.
+  - Visage visible %: sur le genre ciblé par YAML (min visible = 100 - max_face_mask_percentage).
+  - Pose: pitch/yaw/roll <= seuils.
+  - Tolérance: max_gap (secondes) remplace l’ancien paramètre par frames.
+- Description LLM (à venir): prompt chargé depuis prompt.txt, JSON par image (bools, listes, description), vote, résumé, {clip}.json.
 
 ---
 
-## Contribuer
+## Architecture
+- cli/
+  - process_video.py: orchestration analyse+cut.
+  - assemble.py: concat par préfixe avec filtres JSON.
+  - test_frame.py: test image/branche.
+- pipeline/
+  - analyzer.py: FrameAnalyzer (YOLO face, NSFW, genre, pose), VideoAnalyzer (échantillonnage, tolérance, fusion segments).
+- detectors/
+  - nsfw.py, pose.py, mask.py (visible face).
+- config.py: chargement+validation YAML, options titrage.
 
-1. Forkez le projet.  
-2. Créez une branche (`feature/nom`).  
-3. Ajoutez votre code et tests.  
-4. Ouvrez un pull request.  
-
-Merci de respecter le style PEP 8 et d’ajouter des tests pour toute nouvelle fonctionnalité.
+Modules à venir: normalize, scenes, describe, tracking, criteria, title/metadata, cache.
 
 ---
 
-## Licence
+## Tests & Qualité
+- Tests unitaires (à écrire dans `tests/`):
+  - tests/test_config.py: validation YAML, tolérance, chemins.
+  - tests/test_analyzer.py: faux positifs/negatifs, tolérance, pose/visage/genre.
+  - tests/test_assemble_utils.py: tri, critères JSON, concat ffmpeg (dry-run/mock).
+- Lint/format: flake8, black. CI GitHub Actions recommandé.
 
-MIT License © 2025 Benoit Guitard. Voir le fichier `LICENSE` pour plus de détails.
+---
+
+## Performances
+- Favoriser l’early-exit: détecter vite un visage non conforme/femme/NSFW.
+- Batching Ultralytics, décodage séquentiel (PyAV/Decord – futur), downscale d’analyse.
+- Refine localisé autour des frontières retenues (futur).
+
+---
+
+## Contribution
+- Fork → branche feature → PR.
+- Respecter PEP8, ajouter des tests.
+- Débat ouvert sur les seuils, formats JSON et étapes du workflow.

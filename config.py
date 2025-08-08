@@ -7,7 +7,7 @@ except ImportError:
     print("[ERROR] Module 'yaml' non trouvé. Veuillez installer PyYAML.")
     sys.exit(1)
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 # -----------------------------------------------------------------------------
 # 1) Sous-structure dédiée à la génération de titres via LMStudio
@@ -15,7 +15,7 @@ from typing import Literal
 @dataclass
 class TitleGenerationConfig:
     """Paramètres facultatifs pour la génération automatisée des titres."""
-    enabled: bool = False      # True => activation du titrage
+    enabled: bool = False
     prompt: str = ""
     model: str = ""
     endpoint: str = "http://localhost:1234/v1/chat/completions"
@@ -39,26 +39,25 @@ class Config:
 
     gender_filter: Literal["homme", "femme", "tous", "male", "female", "all"]
     max_face_mask_percentage: float
-    min_person_skin_percentage: float
-    min_frame_person_coverage: float
+    min_face_confidence: float
+    # Remplacement de min_frame_person_coverage par un seuil sur la taille du visage
+    min_face_bbox_area_pct: float
 
     min_gender_confidence: float
-    min_face_confidence: float
     max_head_pitch: float
     max_head_yaw: float
     max_head_roll: float
 
-    person_segm_weights: str
     face_bbox_weights: str
-    skin_segm_weights: str
     gender_model_id: str
 
-    enable_body_detection: bool
-    enable_skin_detection: bool
     enable_face_detection: bool
     enable_gender_detection: bool
     enable_nsfw: bool
     nsfw_mode: str
+
+    # Tolérance (DEPREC): nombre de frames négatives consécutives (utiliser max_gap)
+    max_consecutive_negatives: Optional[int] = None
 
     debug: bool = False
 
@@ -84,8 +83,8 @@ def load_config(path: str) -> Config:
     # 3.2) Vérification des clés obligatoires
     required = [
         "input_video", "output_dir",
-        "person_segm_weights", "face_bbox_weights",
-        "skin_segm_weights", "gender_model_id"
+        "face_bbox_weights",
+        "gender_model_id"
     ]
     missing = [k for k in required if k not in raw]
     if missing:
@@ -102,7 +101,7 @@ def load_config(path: str) -> Config:
         - Uniformise les slashes
         """
         if not isinstance(p, str):
-            raise ValueError(f"Le chemin spécifié n’est pas une chaîne de caractères valide : {p}")
+            raise ValueError(f"Le chemin spécifié n’est pas une chaîne valide : {p}")
         p = p.strip().strip('"').strip("'")  # Enlève les guillemets simples ou doubles
         return os.path.normpath(os.path.expanduser(p))
 
@@ -133,17 +132,9 @@ def load_config(path: str) -> Config:
         print(f"[ERROR] Le chemin de sortie spécifié correspond à un fichier (dossier attendu) : {raw['output_dir']}")
         sys.exit(1)
     # Vérifier l'existence des fichiers de poids requis pour YOLO
-    person_weights_path = norm(raw["person_segm_weights"])
-    if not os.path.isfile(person_weights_path):
-        print(f"[ERROR] Fichier de poids introuvable : {raw['person_segm_weights']}")
-        sys.exit(1)
     face_weights_path = norm(raw["face_bbox_weights"])
     if not os.path.isfile(face_weights_path):
         print(f"[ERROR] Fichier de poids introuvable : {raw['face_bbox_weights']}")
-        sys.exit(1)
-    skin_weights_path = norm(raw["skin_segm_weights"])
-    if not os.path.isfile(skin_weights_path):
-        print(f"[ERROR] Fichier de poids introuvable : {raw['skin_segm_weights']}")
         sys.exit(1)
     # Champ device : peut être un index GPU entier ou une chaîne ("cuda:0", "cpu")
     if "device" in raw:
@@ -158,15 +149,19 @@ def load_config(path: str) -> Config:
             print(f"[ERROR] Type invalide pour 'device' (chaîne attendue, obtenu {type(dev_val).__name__})")
             sys.exit(1)
     # Champs numériques (float)
-    numeric_fields = ["sample_rate", "refine_rate", "max_gap", "min_clip_duration",
-                      "max_face_mask_percentage", "min_skin_percentage",
-                      "min_gender_confidence", "min_face_confidence",
-                      "max_head_pitch", "max_head_yaw", "max_head_roll"]
-    for field in numeric_fields:
-        if field in raw:
-            val = raw[field]
+    numeric_fields = [
+        "sample_rate", "refine_rate", "max_gap", "min_clip_duration",
+        "max_face_mask_percentage",
+        "min_face_confidence",
+        "min_face_bbox_area_pct",
+        "min_gender_confidence",
+        "max_head_pitch", "max_head_yaw", "max_head_roll"
+    ]
+    for field_name in numeric_fields:
+        if field_name in raw:
+            val = raw[field_name]
             if type(val) not in (int, float):
-                print(f"[ERROR] Type invalide pour '{field}' (nombre attendu, obtenu {type(val).__name__})")
+                print(f"[ERROR] Type invalide pour '{field_name}' (nombre attendu, obtenu {type(val).__name__})")
                 sys.exit(1)
     # Champs entiers (int)
     if "num_workers" in raw:
@@ -178,17 +173,19 @@ def load_config(path: str) -> Config:
                 print(f"[ERROR] Type invalide pour 'num_workers' (entier attendu, obtenu {type(val).__name__})")
                 sys.exit(1)
     # Champs booléens
-    bool_fields = ["enable_body_detection", "enable_skin_detection", "enable_face_detection",
-                   "enable_gender_detection", "enable_nsfw", "debug"]
-    for field in bool_fields:
-        if field in raw and not isinstance(raw[field], bool):
-            print(f"[ERROR] Type invalide pour '{field}' (booléen attendu, obtenu {type(raw[field]).__name__})")
+    bool_fields = [
+        "enable_face_detection",
+        "enable_gender_detection", "enable_nsfw", "debug"
+    ]
+    for field_name in bool_fields:
+        if field_name in raw and not isinstance(raw[field_name], bool):
+            print(f"[ERROR] Type invalide pour '{field_name}' (booléen attendu, obtenu {type(raw[field_name]).__name__})")
             sys.exit(1)
     # Champs string
     str_fields = ["nsfw_mode", "gender_model_id"]
-    for field in str_fields:
-        if field in raw and not isinstance(raw[field], str):
-            print(f"[ERROR] Type invalide pour '{field}' (chaîne attendue, obtenu {type(raw[field]).__name__})")
+    for field_name in str_fields:
+        if field_name in raw and not isinstance(raw[field_name], str):
+            print(f"[ERROR] Type invalide pour '{field_name}' (chaîne attendue, obtenu {type(raw[field_name]).__name__})")
             sys.exit(1)
     # Validation du filtre de genre (homme/femme/tous ou male/female/all)
     if "gender_filter" in raw:
@@ -206,6 +203,29 @@ def load_config(path: str) -> Config:
             print(f"[ERROR] Valeur invalide pour 'gender_filter' : {raw['gender_filter']}")
             sys.exit(1)
         raw["gender_filter"] = gf_val
+
+    # 3.3.b) Dépréciation de max_consecutive_negatives -> conversion en secondes vers max_gap
+    if raw.get("max_consecutive_negatives", None) is not None:
+        try:
+            consec = int(raw["max_consecutive_negatives"])  # frames d'échantillonnage
+        except Exception:
+            print("[ERROR] 'max_consecutive_negatives' doit être un entier si présent.")
+            sys.exit(1)
+        sr = raw.get("sample_rate", 1.0)
+        try:
+            sr = float(sr)
+        except Exception:
+            sr = 1.0
+        if sr <= 0:
+            print("[WARN] 'sample_rate' <= 0, conversion de 'max_consecutive_negatives' ignorée. Utilisez 'max_gap' (secondes).")
+        else:
+            derived_gap = float(consec) / sr
+            if "max_gap" in raw and raw["max_gap"] is not None:
+                print(f"[DEPRECATED] 'max_consecutive_negatives' est ignoré (préférence à 'max_gap' existant = {raw['max_gap']}s).")
+            else:
+                raw["max_gap"] = derived_gap
+                print(f"[DEPRECATED] 'max_consecutive_negatives' converti en max_gap={derived_gap:.3f}s (sample_rate={sr}). Utilisez 'max_gap' dorénavant.")
+
     # Validation de la section title_generation si activée
     if raw.get("title_generation", {}) and raw["title_generation"].get("enabled", False):
         tg = raw["title_generation"]
@@ -240,26 +260,24 @@ def load_config(path: str) -> Config:
 
         gender_filter             = raw.get("gender_filter", "tous"),
         max_face_mask_percentage  = raw.get("max_face_mask_percentage", 25.0),
-        min_frame_person_coverage = raw.get("min_frame_person_coverage", 50.0),
-        min_person_skin_percentage= raw.get("min_person_skin_percentage", 50.0),
-        min_gender_confidence     = raw.get("min_gender_confidence", 0.8),
         min_face_confidence       = raw.get("min_face_confidence", 0.25),
+        min_face_bbox_area_pct    = raw.get("min_face_bbox_area_pct", 1.0),
+
+        min_gender_confidence     = raw.get("min_gender_confidence", 0.8),
         max_head_pitch            = raw.get("max_head_pitch", 20.0),
         max_head_yaw              = raw.get("max_head_yaw", 30.0),
         max_head_roll             = raw.get("max_head_roll", 20.0),
 
-        person_segm_weights       = norm(raw["person_segm_weights"]),
         face_bbox_weights         = norm(raw["face_bbox_weights"]),
-        skin_segm_weights         = norm(raw["skin_segm_weights"]),
         gender_model_id           = raw["gender_model_id"],
 
-        enable_body_detection     = raw.get("enable_body_detection", True),
-        enable_skin_detection     = raw.get("enable_skin_detection", True),
         enable_face_detection     = raw.get("enable_face_detection", True),
         enable_gender_detection   = raw.get("enable_gender_detection", True),
         enable_nsfw               = raw.get("enable_nsfw", True),
         nsfw_mode                 = raw.get("nsfw_mode", "high"),
 
+        # Toujours None: option dépréciée (alias pris en charge en amont)
+        max_consecutive_negatives = None,
         debug                     = raw.get("debug", False),
 
         title_generation = TitleGenerationConfig(

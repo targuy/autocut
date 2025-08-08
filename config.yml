@@ -13,14 +13,13 @@ num_workers:                8
 sample_rate:                0.1     # fps pour échantillonnage rapide
 refine_rate:                24.0    # fps pour affinage des bords
 min_clip_duration:          12.0    # durée min clip (secondes)
-max_gap:                    10.0     # tolérance gap en secondes
+max_gap:                    10.0    # tolérance de trous en secondes (remplace l'ancien max_consecutive_negatives)
+# NOTE: 'max_consecutive_negatives' est déprécié; s'il est présent, il sera converti en max_gap selon sample_rate.
 
 # Seuils & filtres
 max_face_mask_percentage:   50.0    # % max visage masqué
 min_face_confidence:        0.6
-
-min_person_skin_percentage: 10.0    # % min peau visible sur le corps
-min_frame_person_coverage:  10.0
+min_face_bbox_area_pct:     1.0     # % min aire bbox visage vs image
 
 gender_filter:              'female' # 'homme'/'femme'/'tous'
 min_gender_confidence:      0.80
@@ -29,8 +28,6 @@ max_head_yaw:               75.0    # deg
 max_head_roll:              35.0    # deg
 
 # Activation modules
-enable_body_detection:      false
-enable_skin_detection:      false
 enable_face_detection:      true
 enable_gender_detection:    true
 enable_nsfw:                true
@@ -40,9 +37,7 @@ nsfw_mode:                  'high'
 debug:                      true
 
 # Poids modèles Ultralytics
-person_segm_weights:        'E:/DocumentsBenoit/Stable Diffusion/models/ultralytics/segm/person_yolov8n-seg.pt'
 face_bbox_weights:          'E:/DocumentsBenoit/Stable Diffusion/models/ultralytics/bbox/face_yolov8n_v2.pt'
-skin_segm_weights:          'E:/DocumentsBenoit/Stable Diffusion/models/ultralytics/segm/skin_yolov8n-seg_400.pt'
 
 # ID Hugging Face pour classification de genre
 gender_model_id:            'rizvandwiki/gender-classification-2'
