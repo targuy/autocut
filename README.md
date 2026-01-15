@@ -174,6 +174,12 @@ python -c "import onnxruntime; print(f'ONNX Runtime: {onnxruntime.__version__}')
 
 ---
 
+**📖 Pour plus de détails** : Consultez [INSTALL.md](INSTALL.md) pour un guide d'installation complet avec dépannage et [REQUIREMENTS_ANALYSIS.md](REQUIREMENTS_ANALYSIS.md) pour comprendre la gestion des conflits GPU/CPU.
+
+
+
+---
+
 ## Configuration
 
 Les paramètres sont centralisés dans `config.yaml`. Exemple :
