@@ -178,10 +178,25 @@ class JobScheduler:
         # Create tasks
         tasks = [self.run_job(job, console) for job in jobs]
         
-        # Run all tasks concurrently
-        results = await asyncio.gather(*tasks, return_exceptions=False)
+        # Run all tasks concurrently, collecting both successes and failures
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        return results
+        # Process results and convert exceptions to error dicts
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                processed_results.append({
+                    'row': jobs[i].row_number,
+                    'tool': jobs[i].tool,
+                    'device': 'unknown',
+                    'success': False,
+                    'duration': 0.0,
+                    'notes': str(result),
+                })
+            else:
+                processed_results.append(result)
+        
+        return processed_results
 
 
 def run_batch_sync(

@@ -11,6 +11,14 @@ from gpu_video_tools.ffmpeg_ops import (
 from gpu_video_tools.gpu import resolve_device
 
 
+# Test constants
+CODEC_ENCODER_MAPPINGS = [
+    ('h264', 'libx264'),
+    ('hevc', 'libx265'),
+    ('av1', 'libaom-av1'),
+]
+
+
 def test_build_transcode_command_cpu():
     """Test building transcode command for CPU."""
     device = resolve_device('cpu')
@@ -223,7 +231,7 @@ def test_build_transcode_different_codecs():
     """Test building transcode commands for different codecs."""
     device = resolve_device('cpu')
     
-    for codec, expected_encoder in [('h264', 'libx264'), ('hevc', 'libx265'), ('av1', 'libaom-av1')]:
+    for codec, expected_encoder in CODEC_ENCODER_MAPPINGS:
         cmd = build_transcode_command(
             'input.mp4',
             'output.mp4',
