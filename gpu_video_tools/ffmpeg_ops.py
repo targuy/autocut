@@ -46,6 +46,7 @@ def build_transcode_command(
     bitrate: Optional[str] = None,
     crf: Optional[int] = None,
     preset: Optional[str] = None,
+    skip_encoder_check: bool = False,
 ) -> List[str]:
     """Build FFmpeg transcode command for the given device.
     
@@ -60,6 +61,7 @@ def build_transcode_command(
         bitrate: Target bitrate, e.g., '8M' (optional)
         crf: Constant Rate Factor (optional, alternative to bitrate)
         preset: Encoder preset (optional)
+        skip_encoder_check: Skip encoder availability check (for testing)
     
     Returns:
         List of command arguments
@@ -68,7 +70,7 @@ def build_transcode_command(
         EncoderNotAvailableError: If encoder is not available
     """
     # Check encoder availability
-    if not check_encoder_available(codec, device):
+    if not skip_encoder_check and not check_encoder_available(codec, device):
         raise EncoderNotAvailableError(
             encoder=f"{codec}{device.ffmpeg_encode_suffix}",
             device=device.device_spec

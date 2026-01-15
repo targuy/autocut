@@ -1,8 +1,10 @@
 """Face detection using YuNet ONNX model with multi-provider support."""
 
+from __future__ import annotations
+
 import csv
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 import math
 
 try:
@@ -11,6 +13,7 @@ try:
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
+    np = None
 
 try:
     import onnxruntime as ort

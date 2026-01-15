@@ -22,6 +22,7 @@ def test_build_transcode_command_cpu():
         codec='h264',
         width=1920,
         height=1080,
+        skip_encoder_check=True,
     )
     
     assert 'ffmpeg' in cmd
@@ -43,6 +44,7 @@ def test_build_transcode_command_with_bitrate():
         device,
         codec='h264',
         bitrate='8M',
+        skip_encoder_check=True,
     )
     
     assert '-b:v' in cmd
@@ -59,6 +61,7 @@ def test_build_transcode_command_with_crf():
         device,
         codec='h264',
         crf=23,
+        skip_encoder_check=True,
     )
     
     assert '-crf' in cmd
@@ -75,6 +78,7 @@ def test_build_transcode_command_with_fps():
         device,
         codec='h264',
         fps=30.0,
+        skip_encoder_check=True,
     )
     
     cmd_str = ' '.join(cmd)
@@ -91,6 +95,7 @@ def test_build_transcode_command_with_preset():
         device,
         codec='h264',
         preset='fast',
+        skip_encoder_check=True,
     )
     
     assert '-preset' in cmd
@@ -224,8 +229,9 @@ def test_build_transcode_different_codecs():
             'output.mp4',
             device,
             codec=codec,
+            skip_encoder_check=True,
         )
         
-        # The encoder might not be available, but command should still be built
+        # Command should be built with the expected encoder
         assert '-c:v' in cmd
-        # Note: We can't guarantee the encoder is in the command if it's not available
+        assert expected_encoder in cmd
