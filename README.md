@@ -58,26 +58,125 @@ AutoCutVideo/
 
 ## Installation
 
-1. **Cloner le dépôt**  
-   ```bash
-   git clone https://votre-repo/AutoCutVideo.git
-   cd AutoCutVideo
-   ```
+AutoCutVideo provides automated installation scripts that handle environment setup, FFmpeg installation, and dependency management with GPU/CPU support detection.
 
-2. **Installer Poetry** (si nécessaire)  
+### Prérequis
+
+- **Python 3.10 ou supérieur**
+- **FFmpeg** (sera installé automatiquement si manquant)
+- Pour le support GPU NVIDIA : CUDA 12.1 ou supérieur et pilotes NVIDIA à jour
+
+### Option 1 : Installation automatique (Recommandée)
+
+#### Linux / macOS
+
+```bash
+git clone https://github.com/targuy/autocut.git
+cd autocut
+chmod +x install.sh
+./install.sh
+```
+
+Le script d'installation va :
+- Vérifier la version de Python
+- Détecter et installer FFmpeg si nécessaire
+- Créer un environnement virtuel Python
+- Vous proposer le choix entre installation CPU ou CUDA
+- Installer toutes les dépendances requises
+
+#### Windows
+
+```cmd
+git clone https://github.com/targuy/autocut.git
+cd autocut
+install.bat
+```
+
+Le script d'installation va :
+- Vérifier la version de Python
+- Détecter FFmpeg (propose imageio-ffmpeg si manquant)
+- Créer un environnement virtuel Python
+- Vous proposer le choix entre installation CPU ou CUDA
+- Installer toutes les dépendances requises
+
+### Option 2 : Installation avec Poetry
+
+Si vous préférez utiliser Poetry :
+
+1. **Installer Poetry** (si nécessaire)  
    ```bash
    curl -sSL https://install.python-poetry.org | python3 -
    ```
 
-3. **Installer les dépendances**  
+2. **Installer les dépendances**
+
+   Pour CPU uniquement :
    ```bash
-   poetry install
+   poetry install --extras cpu
    ```
 
-4. **Activer l’environnement**  
+   Pour GPU NVIDIA (CUDA) :
+   ```bash
+   poetry install --extras cuda
+   ```
+
+   Avec toutes les fonctionnalités :
+   ```bash
+   poetry install --extras all
+   ```
+
+3. **Activer l'environnement**  
    ```bash
    poetry shell
    ```
+
+### Option 3 : Installation manuelle avec pip
+
+```bash
+# Créer un environnement virtuel
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scriptsctivate.bat  # Windows
+
+# Installer pour CPU
+pip install -e ".[cpu]"
+
+# OU installer pour CUDA
+pip install -e ".[cpu]"
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip uninstall -y onnxruntime && pip install onnxruntime-gpu
+```
+
+### Gestion des conflits GPU/CPU
+
+Le projet utilise des **extras Poetry** pour éviter les conflits entre packages CPU et GPU :
+
+- `[cpu]` : Installe `torch`, `torchvision`, et `onnxruntime` (versions CPU)
+- `[cuda]` : Installe les versions CPU puis permet l'upgrade manuel vers CUDA
+- `[ffmpeg]` : Installe `imageio-ffmpeg` pour télécharger FFmpeg automatiquement
+- `[all]` : Installe toutes les dépendances de base
+
+**Note importante** : Les packages `torch` et `onnxruntime` ont des versions séparées pour CPU et GPU. Le script d'installation gère automatiquement ce conflit en installant d'abord les dépendances de base, puis en upgradant vers les versions GPU si sélectionné.
+
+### Vérification de l'installation
+
+```bash
+# Vérifier FFmpeg
+ffmpeg -version
+
+# Vérifier PyTorch et la détection CUDA
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Vérifier ONNX Runtime
+python -c "import onnxruntime; print(f'ONNX Runtime: {onnxruntime.__version__}'); print(f'Providers: {onnxruntime.get_available_providers()}')"
+```
+
+---
+
+**📖 Pour plus de détails** : Consultez [INSTALL.md](INSTALL.md) pour un guide d'installation complet avec dépannage et [REQUIREMENTS_ANALYSIS.md](REQUIREMENTS_ANALYSIS.md) pour comprendre la gestion des conflits GPU/CPU.
+
+
 
 ---
 
@@ -106,13 +205,35 @@ gender_model_dir:           "E:/.../gender/rizandwiki-gender"
 
 ## Usage CLI principal
 
-Une fois configuré, lancez :
+Une fois l'installation terminée, vous avez plusieurs options pour exécuter AutoCutVideo :
+
+### Option 1 : Scripts de lancement automatiques (Recommandé)
+
+#### Linux / macOS
+```bash
+./run.sh --config config.yaml
+```
+
+#### Windows
+```cmd
+run.bat --config config.yaml
+```
+
+Ces scripts activent automatiquement l'environnement virtuel et lancent l'application.
+
+### Option 2 : Avec environnement virtuel activé
 
 ```bash
+# Activer l'environnement
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scripts\activate.bat  # Windows
+
+# Lancer l'application
 python main.py --config config.yaml
 ```
 
-Ou, si vous avez défini le script Poetry :
+### Option 3 : Avec Poetry
 
 ```bash
 poetry run autocut --config config.yaml
