@@ -1,6 +1,7 @@
 """Tests for scheduler module."""
 
 import asyncio
+import csv
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -15,6 +16,7 @@ from gpu_video_tools.scheduler import (
 )
 from gpu_video_tools.config import Config
 from gpu_video_tools.gpu import ResolvedDevice
+from gpu_video_tools.bench import BenchmarkLogger
 
 
 def test_batch_job_creation():
@@ -280,3 +282,9 @@ def test_scheduler_with_benchmark_logging(tmp_path):
     
     assert scheduler.bench_logger is not None
     assert bench_csv.exists()
+    
+    # Verify CSV has correct structure
+    with open(bench_csv, 'r') as f:
+        reader = csv.DictReader(f)
+        assert reader.fieldnames == BenchmarkLogger.FIELDNAMES
+        assert len(list(reader)) == 0  # No results logged yet

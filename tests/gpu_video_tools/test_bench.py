@@ -79,10 +79,12 @@ def test_benchmark_logger_initialization(tmp_path):
     assert logger.csv_path == csv_path
     assert csv_path.exists()
     
-    # Check header
+    # Check header exists and has correct fields
     with open(csv_path, 'r') as f:
         reader = csv.DictReader(f)
         assert reader.fieldnames == BenchmarkLogger.FIELDNAMES
+        # Verify no data rows yet
+        assert len(list(reader)) == 0
 
 
 def test_benchmark_logger_creates_directory(tmp_path):

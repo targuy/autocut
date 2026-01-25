@@ -161,6 +161,34 @@ wget https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_detect
   -O ~/.gpu_video_tools/models/face_detection_yunet_2023mar.onnx
 ```
 
+### cutlist
+
+Concatenate video segments from a CSV file:
+
+```bash
+gpu-tools cutlist input.mp4 -o output.mp4 --cuts segments.csv
+gpu-tools cutlist input.mp4 -o output.mp4 --cuts segments.csv --timecode-overlay
+```
+
+Cuts CSV format (supports scene detection output):
+
+```csv
+scene_number,start_time,end_time,duration
+1,0.000,5.500,5.500
+2,5.500,12.300,6.800
+3,12.300,18.900,6.600
+```
+
+Or simple format:
+
+```csv
+start,end
+0.0,5.5
+12.3,18.9
+```
+
+The tool extracts each segment, then concatenates them without re-encoding (unless `--timecode-overlay` is used).
+
 ### analyze
 
 Analyze hardware and create configuration:

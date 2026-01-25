@@ -125,10 +125,13 @@ class JobScheduler:
             semaphore = self.get_semaphore(device)
             
             async with semaphore:
-                # Execute job (this is a placeholder - actual implementation would call appropriate tool)
+                # Execute job
+                # NOTE: This is a simplified simulation. In a production system, 
+                # this would call the actual tool functions (transcode, scenes, etc.)
+                # with the appropriate arguments from job.args
                 console.log(f"[Row {job.row_number}] Running {job.tool} on {device.device_spec}...")
                 
-                # Simulate work
+                # Simulate work (in production, this would call actual tool functions)
                 await asyncio.sleep(0.1)
                 
                 success = True

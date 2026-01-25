@@ -10,7 +10,8 @@ packages = [
   { include = "cli" },
   { include = "pipeline" },
   { include = "segmenters" },
-  { include = "detectors" }
+  { include = "detectors" },
+  { include = "gpu_video_tools" }
 ]
 
 [tool.poetry.dependencies]
@@ -23,9 +24,32 @@ transformers = "^4.51.3"
 huggingface-hub = "^0.31.1"
 nsfw-image-detector = "^0.1.2"
 mediapipe = "^0.10.0"
-torch = "*"
-torchvision = "*"
+# Note: torch/torchvision without version constraint allows pip to select the appropriate version
+# Users can install CUDA or CPU versions based on their hardware
+torch = {version = "*", optional = true}
+torchvision = {version = "*", optional = true}
 tqdm = "^4.66.4"
+click = "^8.1.7"
+rich = "^13.7.0"
+pandas = "^2.2.0"
+tomli = "^2.0.1"
+tomli-w = "^1.0.0"
+scenedetect = {version = "^0.6.3", extras = ["opencv"]}
+# CPU version by default - users can manually install onnxruntime-gpu if needed
+onnxruntime = {version = "^1.17.0", optional = true}
+onnxruntime-gpu = {version = "^1.17.0", optional = true}
+psutil = "^5.9.0"
+pynvml = "^11.5.0"
+gputil = "^1.4.0"
+pywin32 = {version = "^306", markers = "sys_platform == 'win32'"}
+wmi = {version = "^1.5.1", markers = "sys_platform == 'win32'"}
+imageio-ffmpeg = {version = "^0.5.1", optional = true}
+
+[tool.poetry.extras]
+cpu = ["torch", "torchvision", "onnxruntime"]
+cuda = ["torch", "torchvision", "onnxruntime-gpu"]
+ffmpeg = ["imageio-ffmpeg"]
+all = ["torch", "torchvision", "onnxruntime", "imageio-ffmpeg"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
@@ -34,6 +58,7 @@ black = "^25.1.0"
 
 [tool.poetry.scripts]
 autocut = "cli.process_video:main"
+gpu-tools = "gpu_video_tools.__main__:main"
 
 [build-system]
 requires = ["poetry-core"]
