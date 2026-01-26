@@ -15,6 +15,7 @@
     "editor.tabSize": 2
   },
   "yaml.format.singleQuote": true,
+  "editor.autoClosingQuotes": "never",
   "files.exclude": {
     "**/__pycache__": true,
     "**/*.pyc": true,
@@ -25,5 +26,20 @@
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": ["tests", "-v"],
   "git.autofetch": true,
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "terminal.integrated.profiles.windows": {
+    "CMD (Miniforge)": {
+      "path": "C:\\Windows\\System32\\cmd.exe",
+      "args": ["/K", "C:\\Users\\benoi\\miniforge3\\condabin\\conda.bat activate"]
+    },
+    "PowerShell (Miniforge)": {
+      "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& 'C:\\Users\\benoi\\miniforge3\\shell\\condabin\\conda-hook.ps1'"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell (Miniforge)"
 }
