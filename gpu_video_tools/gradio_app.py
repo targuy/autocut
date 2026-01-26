@@ -195,7 +195,9 @@ def transcode_video(
             preset
         )
         
-        # Execute
+        # Execute transcode
+        # Security Note: cmd is a list built by build_transcode_command() from validated
+        # parameters - no shell injection risk. subprocess.run default shell=False is safe.
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
@@ -271,7 +273,8 @@ def extract_frames_ui(
             suffix
         )
         
-        # Execute
+        # Execute frame extraction
+        # Security Note: cmd list built by build_extract_frames_command() - no shell injection risk
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         
         if result.returncode == 0:
@@ -359,8 +362,12 @@ def add_job_to_queue(job_data: Dict[str, Any]) -> str:
         return f"❌ Error adding job: {e}"
 
 
-def get_queue_dataframe() -> pd.DataFrame:
+def get_queue_dataframe():
     """Get current queue as pandas DataFrame."""
+    if not PANDAS_AVAILABLE:
+        # Return empty dict if pandas not available
+        return {}
+    
     with queue_lock:
         if not job_queue:
             return pd.DataFrame(columns=['ID', 'Tool', 'Status', 'Device', 'Input'])
@@ -378,24 +385,27 @@ def get_queue_dataframe() -> pd.DataFrame:
         return pd.DataFrame(data)
 
 
-def delete_job_from_queue(job_id: int) -> Tuple[pd.DataFrame, str]:
+def delete_job_from_queue(job_id: int):
     """Delete a job from the queue."""
     try:
         with queue_lock:
             global job_queue
-            job_queue = [job for job in job_queue if job.get('id') != job_id]
+            # Create new list atomically
+            new_queue = [job for job in job_queue if job.get('id') != job_id]
+            job_queue = new_queue
         
         return get_queue_dataframe(), f"✅ Job {job_id} deleted"
     except Exception as e:
         return get_queue_dataframe(), f"❌ Error: {e}"
 
 
-def clear_queue() -> Tuple[pd.DataFrame, str]:
+def clear_queue():
     """Clear all jobs from the queue."""
     try:
         with queue_lock:
             global job_queue
             count = len(job_queue)
+            # Atomic replacement
             job_queue = []
         
         return get_queue_dataframe(), f"✅ Cleared {count} jobs from queue"
@@ -404,7 +414,11 @@ def clear_queue() -> Tuple[pd.DataFrame, str]:
 
 
 def run_queue() -> str:
-    """Execute all jobs in the queue."""
+    """Execute all jobs in the queue.
+    
+    NOTE: This is a simplified implementation for demonstration.
+    Full implementation would integrate with actual tool execution.
+    """
     try:
         with queue_lock:
             if not job_queue:
@@ -423,17 +437,26 @@ def run_queue() -> str:
             
             job['status'] = 'running'
             # Execute job based on tool type
-            # This is a simplified version - full implementation would handle all tools
+            # NOTE: Full implementation would call actual tool functions here
             tool = job.get('tool', '')
             
             try:
+                # Placeholder for actual tool execution
+                # TODO: Integrate with transcode, scenes, extract, faces functions
                 if tool == 'transcode':
-                    # Run transcode job
+                    # Would call transcode_video() here
                     pass
                 elif tool == 'scenes':
-                    # Run scene detection
+                    # Would call detect_scenes_ui() here
                     pass
-                # ... other tools
+                elif tool == 'extract':
+                    # Would call extract_frames_ui() here
+                    pass
+                elif tool == 'faces':
+                    # Would call detect_faces_ui() here
+                    pass
+                else:
+                    raise ValueError(f"Unknown tool: {tool}")
                 
                 job['status'] = 'completed'
                 results.append(f"✅ Job {job['id']} completed")
@@ -443,7 +466,7 @@ def run_queue() -> str:
         
         execution_state["running"] = False
         
-        return "\n".join(results)
+        return "\n".join(results) if results else "⚠️ No jobs executed"
     
     except Exception as e:
         execution_state["running"] = False
@@ -867,13 +890,17 @@ def launch(
     share: bool = False,
     auth: Optional[Tuple[str, str]] = None
 ) -> None:
-    """Launch the Gradio web interface."""
+    """Launch the Gradio web interface.
+    
+    Raises:
+        ImportError: If required dependencies (gradio, pandas, plotly) are not installed
+        Exception: If interface launch fails
+    """
     # Check dependencies
     missing = check_dependencies()
     if missing:
-        print(f"❌ Missing required dependencies: {', '.join(missing)}")
-        print(f"   Install with: pip install {' '.join(missing)}")
-        sys.exit(1)
+        error_msg = f"Missing required dependencies: {', '.join(missing)}\nInstall with: pip install {' '.join(missing)}"
+        raise ImportError(error_msg)
     
     try:
         # Load config for settings
@@ -896,12 +923,17 @@ def launch(
             quiet=False
         )
     
+    except ImportError:
+        raise  # Re-raise ImportError
     except Exception as e:
-        print(f"❌ Failed to launch interface: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        raise RuntimeError(f"Failed to launch interface: {e}") from e
 
 
 if __name__ == "__main__":
-    launch()
+    try:
+        launch()
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
