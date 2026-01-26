@@ -36,7 +36,6 @@ env/
 
 # VSCode - track settings for project consistency
 # .vscode/ is now tracked for project configuration
-
 # Testing
 .pytest_cache/
 .coverage
