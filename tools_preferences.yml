@@ -1,0 +1,74 @@
+# GPU Video Tools - Default Configuration Template
+# This file defines tool preferences, device limits, and processing settings
+
+# Default device for each tool
+# Options: cpu, auto, nvidia:0, nvidia:1, amd:0, amd:1, etc.
+defaults:
+  probe: cpu           # Video metadata extraction (CPU-only)
+  transcode: auto      # Video transcoding (auto-select best device)
+  scenes: cpu          # Scene detection (CPU-only, PySceneDetect requirement)
+  extract: auto        # Frame extraction (auto-select best device)
+  faces: auto          # Face detection (auto-select best device)
+  cutlist: cpu         # Video segment concatenation (CPU-only)
+
+# Maximum concurrent jobs per device
+# Prevents resource exhaustion and maintains performance
+device_limits:
+  cpu: 2               # CPU can handle 2 concurrent jobs
+  nvidia:0: 1          # First NVIDIA GPU: 1 job at a time
+  nvidia:1: 1          # Second NVIDIA GPU: 1 job at a time
+  amd:0: 1             # First AMD GPU: 1 job at a time
+  amd:1: 1             # Second AMD GPU: 1 job at a time
+
+# Output file and benchmark naming configuration
+output:
+  benchmark_naming: "{tool_name}_{timestamp}.csv"
+  timestamp_format: "%Y%m%d_%H%M%S"
+  
+# Codec support per device type
+# Lists devices in priority order for each codec
+codecs:
+  h264:
+    - nvidia:0        # NVIDIA H.264 NVENC encoder
+    - amd:0           # AMD H.264 AMF encoder
+    - cpu             # Software libx264 encoder
+  hevc:
+    - nvidia:0        # NVIDIA HEVC NVENC encoder
+    - amd:0           # AMD HEVC AMF encoder
+    - cpu             # Software libx265 encoder
+  av1:
+    - nvidia:0        # NVIDIA AV1 NVENC encoder (RTX 40xx+)
+    - cpu             # Software libaom-av1 encoder
+
+# Gradio web interface settings
+gradio:
+  server_port: 7860                # Web server port
+  server_name: "localhost"         # Bind address (use "0.0.0.0" for public access)
+  enable_queue: true               # Enable job queue system
+  max_queue_size: 100              # Maximum queued jobs
+  share: false                     # Create public Gradio link (false for local only)
+  auth: null                       # Authentication (null=none, or ["user", "pass"])
+  
+# Performance tuning recommendations
+# Uncomment and adjust based on your hardware
+# performance:
+#   nvidia:0:
+#     max_resolution: "4k"         # Maximum supported resolution
+#     preferred_preset: "p4"       # NVENC preset (p1-p7)
+#     max_bitrate: "50M"           # Maximum bitrate
+#   amd:0:
+#     max_resolution: "4k"
+#     preferred_preset: "quality"  # AMF preset
+#     max_bitrate: "50M"
+#   cpu:
+#     max_resolution: "1080p"      # Recommended max for CPU encoding
+#     preferred_preset: "medium"   # x264/x265 preset
+#     max_bitrate: "10M"
+
+# Advanced settings (typically don't need changes)
+advanced:
+  ffmpeg_path: "ffmpeg"            # FFmpeg binary path (use full path if not in PATH)
+  ffprobe_path: "ffprobe"          # FFprobe binary path
+  temp_dir: null                   # Temporary file directory (null = system default)
+  log_ffmpeg_output: false         # Log all FFmpeg output (verbose)
+  auto_cleanup_temp: true          # Automatically delete temporary files
