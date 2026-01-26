@@ -1,5 +1,27 @@
 name: autocut
 channels:
   - conda-forge
+  - defaults
 dependencies:
-  - python=3.10
+  - python=3.11
+  - pip
+  - ffmpeg
+  - numpy>=1.26
+  - pip:
+    - poetry>=1.7.0
+    - opencv-python>=4.11.0
+    - torch
+    - torchvision
+    - ultralytics>=8.3.0
+    - transformers>=4.51.0
+    - huggingface-hub>=0.31.0
+    - click>=8.1.7
+    - rich>=13.7.0
+    - gradio>=4.15.0
+    - plotly>=5.18.0
+    - pandas>=2.2.0
+    - pyyaml>=6.0.2
+    - scenedetect[opencv]>=0.6.3
+    - pytest>=8.3.5
+    - flake8>=7.2.0
+    - black>=25.1.0

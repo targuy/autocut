@@ -9,6 +9,7 @@ Windows-first, GPU/CPU-aware Python CLI toolset for video processing with explic
 - **Device Precedence**: CLI → Batch CSV → Config file (with required device specification)
 - **Batch Processing**: Run multiple jobs concurrently with per-device limits
 - **Comprehensive Tools**: Probe, transcode, scene detection, frame extraction, face detection, and more
+- **Web Interface**: Full-featured Gradio UI with 4 tabs for visual control and monitoring
 - **Colorful Progress**: Rich TUI with progress bars and statistics
 - **Benchmarking**: CSV logging of performance metrics
 
@@ -28,11 +29,18 @@ Windows-first, GPU/CPU-aware Python CLI toolset for video processing with explic
 # Install dependencies
 poetry install
 
+# For GPU support (CUDA)
+poetry install -E cuda
+
+# For web interface with all features
+poetry install -E all
+
 # Activate environment
 poetry shell
 
 # Verify installation
 gpu-tools --help
+gpu-tools-ui --help
 ```
 
 ### Using pip
@@ -329,6 +337,88 @@ pip install onnxruntime-directml
 
 # CPU only
 pip install onnxruntime
+```
+
+## Web Interface (Gradio)
+
+Launch the interactive web interface for visual control and monitoring:
+
+```bash
+gpu-tools-ui
+```
+
+Or with custom settings:
+
+```bash
+python -m gpu_video_tools.gradio_app
+```
+
+The web interface provides four main tabs:
+
+### Tab 1: Video Tools
+- **Probe**: Inspect video metadata with JSON export
+- **Transcode**: Hardware-accelerated video encoding with real-time preview
+- **Scenes**: Detect scene boundaries with configurable thresholds
+- **Extract Frames**: Frame extraction with GPU decode acceleration
+- **Faces**: Face detection with YuNet ONNX model and pose estimation
+
+Features:
+- Multiple input methods: upload, drag-drop, file browser, path input
+- Device selection dropdown (auto-populated from hardware)
+- Real-time progress tracking with pause/resume/stop controls
+- Output preview and download buttons
+- Tool-specific parameter controls
+
+### Tab 2: Batch Queue Manager
+- Upload batch CSV files or create jobs manually
+- Interactive queue display with drag-to-reorder
+- Batch execution controls: start, pause, resume, stop
+- Individual job progress tracking with status indicators
+- Edit or delete queued jobs
+- Export queue as CSV for reuse
+- Queue state persistence between sessions
+
+### Tab 3: Configuration Editor
+- Live YAML editor for `tools_preferences.yml`
+- Syntax highlighting with error detection
+- Device discovery and auto-configuration
+- Reset to defaults functionality
+- Configuration profile save/load
+- Test device settings directly from UI
+
+### Tab 4: Monitoring Dashboard
+- Real-time device information and status
+- Activity log streaming with level filtering
+- Benchmark history tables with sorting
+- Performance charts and trends
+- System resource monitoring
+- Export capabilities for reports
+
+### Web Interface Configuration
+
+Configure Gradio settings in `tools_preferences.yml`:
+
+```yaml
+gradio:
+  server_port: 7860                # Web server port
+  server_name: "localhost"         # Bind address (use "0.0.0.0" for public)
+  enable_queue: true               # Enable job queue system
+  max_queue_size: 100              # Maximum queued jobs
+  share: false                     # Create public Gradio link
+  auth: null                       # Authentication (null or ["user", "pass"])
+```
+
+### Launching with Custom Settings
+
+```python
+from gpu_video_tools.gradio_app import launch
+
+launch(
+    server_name="0.0.0.0",  # Listen on all interfaces
+    server_port=8080,
+    share=False,            # Set True for public link
+    auth=("admin", "password")  # Optional authentication
+)
 ```
 
 ## Development
