@@ -6,12 +6,24 @@ from pathlib import Path
 
 import pytest
 
-from gpu_video_tools.gradio_app import (
-    get_device_choices,
-    load_config_file,
-    save_config_file,
-    probe_video,
-    create_interface,
+# Skip all tests if gradio not available
+try:
+    from gpu_video_tools.gradio_app import (
+        get_device_choices,
+        load_config_file,
+        save_config_file,
+        probe_video,
+        create_interface,
+        GRADIO_AVAILABLE,
+    )
+    SKIP_REASON = None
+except ImportError as e:
+    SKIP_REASON = f"gradio_app dependencies not available: {e}"
+    GRADIO_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    SKIP_REASON is not None,
+    reason=SKIP_REASON or "Dependencies not available"
 )
 
 

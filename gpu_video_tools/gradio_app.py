@@ -5,28 +5,34 @@ import json
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from datetime import datetime
 import threading
 import queue
 
+# Optional import of gradio
+GRADIO_AVAILABLE = True
 try:
     import gradio as gr
 except ImportError:
-    print("Error: gradio is required. Install with: pip install gradio")
-    sys.exit(1)
+    GRADIO_AVAILABLE = False
+    gr = None
 
+# Optional import of pandas
+PANDAS_AVAILABLE = True
 try:
     import pandas as pd
 except ImportError:
-    print("Error: pandas is required. Install with: pip install pandas")
-    sys.exit(1)
+    PANDAS_AVAILABLE = False
+    pd = None
 
+# Optional import of plotly
+PLOTLY_AVAILABLE = True
 try:
     import plotly.graph_objects as go
 except ImportError:
-    print("Error: plotly is required. Install with: pip install plotly")
-    sys.exit(1)
+    PLOTLY_AVAILABLE = False
+    go = None
 
 from .config import Config, get_default_config_path
 from .gpu import enumerate_devices, resolve_device
@@ -40,6 +46,26 @@ from .faces import detect_faces_in_video, detect_faces_in_frames
 from .scheduler import parse_batch_csv, run_batch_sync
 from .bench import BenchmarkLogger, benchmark_context, get_file_size
 from .exceptions import GPUVideoToolsError
+
+# Type hints for gradio when available
+if TYPE_CHECKING:
+    if GRADIO_AVAILABLE:
+        GradioComponent = Any
+    else:
+        GradioComponent = Any
+
+
+# Check dependencies at module level but don't exit
+def check_dependencies():
+    """Check if required dependencies are available."""
+    missing = []
+    if not GRADIO_AVAILABLE:
+        missing.append("gradio")
+    if not PANDAS_AVAILABLE:
+        missing.append("pandas")
+    if not PLOTLY_AVAILABLE:
+        missing.append("plotly")
+    return missing
 
 
 # Global state for queue management
@@ -436,7 +462,7 @@ def resume_queue() -> str:
     return "▶️ Queue resumed"
 
 
-def create_video_tools_tab() -> gr.Tab:
+def create_video_tools_tab() -> Any:
     """Create Tab 1: Video Tools Interface."""
     with gr.Tab("Video Tools") as tab:
         gr.Markdown("## Individual Video Processing Tools")
@@ -600,7 +626,7 @@ def create_video_tools_tab() -> gr.Tab:
     return tab
 
 
-def create_batch_queue_tab() -> gr.Tab:
+def create_batch_queue_tab() -> Any:
     """Create Tab 2: Batch Queue Manager."""
     with gr.Tab("Batch Queue") as tab:
         gr.Markdown("## Batch Job Queue Management")
@@ -684,7 +710,7 @@ def create_batch_queue_tab() -> gr.Tab:
     return tab
 
 
-def create_config_tab() -> gr.Tab:
+def create_config_tab() -> Any:
     """Create Tab 3: Configuration Editor."""
     with gr.Tab("Configuration") as tab:
         gr.Markdown("## Configuration Editor")
@@ -733,7 +759,7 @@ def create_config_tab() -> gr.Tab:
     return tab
 
 
-def create_monitoring_tab() -> gr.Tab:
+def create_monitoring_tab() -> Any:
     """Create Tab 4: Monitoring Dashboard."""
     with gr.Tab("Monitoring") as tab:
         gr.Markdown("## System Monitoring & Logs")
@@ -799,7 +825,7 @@ def create_monitoring_tab() -> gr.Tab:
     return tab
 
 
-def create_interface() -> gr.Blocks:
+def create_interface() -> Any:
     """Create the complete Gradio interface."""
     with gr.Blocks(
         title="GPU Video Tools",
@@ -842,6 +868,13 @@ def launch(
     auth: Optional[Tuple[str, str]] = None
 ) -> None:
     """Launch the Gradio web interface."""
+    # Check dependencies
+    missing = check_dependencies()
+    if missing:
+        print(f"❌ Missing required dependencies: {', '.join(missing)}")
+        print(f"   Install with: pip install {' '.join(missing)}")
+        sys.exit(1)
+    
     try:
         # Load config for settings
         config_path = get_default_config_path()
