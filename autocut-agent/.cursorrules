@@ -1,0 +1,112 @@
+# Cursor AI Rules for AutoCut-Agent
+
+## Project Context
+This is AutoCut-Agent, a Python task orchestration system with multi-trigger support, resource management, and LLM integration.
+
+## Code Style
+- Python 3.10+ with type hints everywhere
+- Black formatter (line length 100)
+- Ruff linter
+- Async/await for all I/O operations
+- Pydantic models for data validation
+- Structured logging with structlog
+
+## Architecture
+- FastAPI for REST API
+- SQLAlchemy 2.0 for database
+- Redis for distributed locking
+- LangChain for LLM integration
+- React/Vue.js for frontend (future)
+
+## File Organization
+- src/agent/core/ - Core orchestration
+- src/agent/triggers/ - Trigger systems
+- src/agent/queue/ - Queue management
+- src/agent/resources/ - Resource management
+- src/agent/executor/ - Program execution
+- src/agent/monitoring/ - Logging & metrics
+- src/agent/api/ - FastAPI endpoints
+
+## Best Practices
+1. Always use type hints
+2. Add docstrings to all public functions/classes
+3. Use async/await for I/O operations
+4. Handle errors with try/except and proper logging
+5. Write tests for new features
+6. Use Pydantic for configuration and data validation
+7. Log with structured context (structlog)
+8. Never block the event loop (use run_in_executor for sync code)
+
+## Testing
+- pytest for all tests
+- Use AsyncMock for async mocking
+- Test files mirror src/ structure
+- Aim for 80%+ coverage
+
+## Common Patterns
+```python
+# Configuration
+class MyConfig(BaseModel):
+    name: str
+    timeout: int = 60
+    
+    class Config:
+        frozen = True
+
+# Async function with logging
+async def process_task(task_id: str) -> Dict[str, Any]:
+    """Process a task.
+    
+    Args:
+        task_id: Task identifier
+        
+    Returns:
+        Processing result
+        
+    Raises:
+        TaskNotFoundError: If task doesn't exist
+    """
+    logger = structlog.get_logger(__name__)
+    logger.info("task_processing_started", task_id=task_id)
+    
+    try:
+        result = await do_work(task_id)
+        logger.info("task_completed", task_id=task_id)
+        return result
+    except Exception as e:
+        logger.error("task_failed", task_id=task_id, error=str(e))
+        raise
+
+# API endpoint
+@router.post("/tasks/", response_model=TaskResponse)
+async def create_task(
+    request: TaskCreateRequest,
+    manager = Depends(get_manager)
+) -> TaskResponse:
+    """Create a new task."""
+    try:
+        task = await manager.create_task(**request.dict())
+        return TaskResponse.from_orm(task)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+```
+
+## Don't Do
+- Don't use print(), use logger
+- Don't block event loop with sync I/O
+- Don't hardcode configuration values
+- Don't ignore type hints
+- Don't skip error handling
+- Don't commit without running tests
+
+## When Making Changes
+1. Check existing code patterns first
+2. Update tests
+3. Run linter and formatter
+4. Update documentation if needed
+5. Check that all tests pass
+
+## References
+- specifications-v1.md - Full specifications
+- AI-AGENTS-GUIDE.md - Detailed guide for AI assistants
+- README.md - Project overview

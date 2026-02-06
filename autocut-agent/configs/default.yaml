@@ -1,0 +1,90 @@
+# Default AutoCut-Agent Configuration
+
+# Agent Settings
+agent:
+  name: "AutoCut Agent"
+  workers: 4
+  log_level: INFO
+  debug: false
+
+# Database Configuration
+database:
+  url: "sqlite:///data/agent.db"
+  pool_size: 10
+  echo: false
+
+# Redis Configuration (optional, enables distributed features)
+redis:
+  url: "redis://localhost:6379/0"
+  enabled: false
+  max_connections: 10
+
+# Resource Configuration
+resources:
+  # GPU resources
+  gpu:
+    - id: cuda:0
+      exclusive: true
+      max_concurrent: 1
+    # Add more GPUs as needed
+    # - id: cuda:1
+    #   exclusive: true
+    #   max_concurrent: 1
+  
+  # CPU resources
+  cpu:
+    - id: cpu
+      exclusive: false
+      max_concurrent: 10
+
+# Queue Configuration
+queues:
+  - name: default
+    type: fifo
+    workers: 2
+    priority: 0
+
+# Program Configuration
+programs: []
+
+# Trigger Configuration
+triggers:
+  # API trigger (always enabled)
+  - type: api
+    enabled: true
+
+# Monitoring Configuration
+monitoring:
+  # Metrics
+  metrics:
+    enabled: true
+    prometheus_port: 9090
+  
+  # Logging
+  logging:
+    format: json
+    level: INFO
+    file: logs/agent.log
+    rotation: daily
+    retention_days: 30
+  
+  # Alerts (disabled by default)
+  alerts: []
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8080
+  cors_enabled: true
+  cors_origins:
+    - "http://localhost:3000"
+  docs_enabled: true
+  auth_enabled: false
+
+# LLM Configuration (disabled by default)
+llm:
+  enabled: false
+  provider: openai  # or anthropic
+  model: gpt-4
+  temperature: 0.7
+  max_tokens: 4096
