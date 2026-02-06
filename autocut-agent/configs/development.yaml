@@ -1,0 +1,86 @@
+# Development Configuration
+
+# Agent Settings
+agent:
+  name: "AutoCut Agent (Development)"
+  workers: 2
+  log_level: DEBUG
+  debug: true
+
+# Database Configuration
+database:
+  url: "sqlite:///data/agent-dev.db"
+  pool_size: 5
+  echo: true
+
+# Redis Configuration
+redis:
+  url: "redis://localhost:6379/1"
+  enabled: true
+  max_connections: 5
+
+# Resource Configuration
+resources:
+  gpu: []  # No GPU in dev by default
+  cpu:
+    - id: cpu
+      exclusive: false
+      max_concurrent: 4
+
+# Queue Configuration
+queues:
+  - name: test_queue
+    type: fifo
+    workers: 1
+    priority: 0
+
+# Program Configuration
+programs:
+  - id: test_program
+    path: examples/simple_task.py
+    timeout: 60
+
+# Trigger Configuration
+triggers:
+  - type: api
+    enabled: true
+  
+  # Example file watcher (disabled)
+  # - type: file_watcher
+  #   enabled: false
+  #   path: ./uploads
+  #   pattern: "*.txt"
+  #   program: test_program
+  #   queue: test_queue
+
+# Monitoring Configuration
+monitoring:
+  metrics:
+    enabled: true
+    prometheus_port: 9090
+  
+  logging:
+    format: json
+    level: DEBUG
+    file: logs/agent-dev.log
+    rotation: never
+  
+  alerts: []
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8080
+  cors_enabled: true
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  docs_enabled: true
+  auth_enabled: false
+
+# LLM Configuration
+llm:
+  enabled: false
+  provider: openai
+  model: gpt-3.5-turbo  # Cheaper for dev
+  temperature: 0.7

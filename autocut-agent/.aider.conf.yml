@@ -1,0 +1,32 @@
+# Aider Configuration for AutoCut-Agent
+
+# Model settings
+model: gpt-4
+edit-format: whole
+
+# Repository settings
+auto-commits: true
+commit-prompt: "Brief commit message describing changes"
+dirty-commits: true
+
+# File settings
+show-diffs: true
+
+# Code style
+lint-cmd: "ruff check --fix {file_name}"
+test-cmd: "pytest tests/"
+
+# Auto-commit message format
+commit-message-template: |
+  {brief_description}
+  
+  - {detailed_changes}
+
+# Git settings
+git-dry-run: false
+
+# Performance
+map-tokens: 2048
+
+# Output
+dark-mode: true
