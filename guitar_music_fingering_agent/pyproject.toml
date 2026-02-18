@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "guitar-music-fingering-agent"
+version = "0.1.0"
+description = "Annotation automatique du doigté pour guitare à partir de fichiers musicaux"
+authors = ["Benoit Guitard <benoit@familleguitard.fr>"]
+readme = "README.md"
+license = "MIT"
+
+packages = [
+    { include = "guitar_fingering", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pyguitarpro = "^0.10"
+music21 = "^9.1"
+pretty-midi = "^0.2.10"
+numpy = "^1.26"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+flake8 = "^7.2"
+black = "^25.1"
+
+[tool.poetry.scripts]
+guitar-fingering = "guitar_fingering.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
